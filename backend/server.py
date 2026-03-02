@@ -28,32 +28,51 @@ MYSQL_CONFIG = {
     'password': os.environ.get('MYSQL_PASSWORD', 'm94IHMwmhb1SHItnl3zP'),
     'database': os.environ.get('MYSQL_DATABASE', 'madoverai'),
     'charset': 'utf8mb4',
-    'cursorclass': pymysql.cursors.DictCursor
+    'cursorclass': pymysql.cursors.DictCursor,
+    'connect_timeout': 10,
+    'read_timeout': 30,
+    'write_timeout': 30
 }
+
+# MySQL connection status
+mysql_available = False
 
 def get_mysql_connection():
     """Get MySQL database connection"""
-    return pymysql.connect(**MYSQL_CONFIG)
+    global mysql_available
+    try:
+        conn = pymysql.connect(**MYSQL_CONFIG)
+        mysql_available = True
+        return conn
+    except pymysql.Error as e:
+        mysql_available = False
+        raise e
 
 def init_mysql_database():
     """Initialize MySQL database with required tables"""
-    connection = get_mysql_connection()
+    global mysql_available
     try:
-        with connection.cursor() as cursor:
-            # Create leads table if not exists
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS leads (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    email VARCHAR(255) NOT NULL,
-                    company VARCHAR(255),
-                    message TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            connection.commit()
-    finally:
-        connection.close()
+        connection = get_mysql_connection()
+        try:
+            with connection.cursor() as cursor:
+                # Create leads table if not exists
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS leads (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        email VARCHAR(255) NOT NULL,
+                        company VARCHAR(255),
+                        message TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                connection.commit()
+            mysql_available = True
+        finally:
+            connection.close()
+    except pymysql.Error as e:
+        mysql_available = False
+        raise e
 
 # Create the main app without a prefix
 app = FastAPI()
