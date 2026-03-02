@@ -610,6 +610,10 @@
   letter-spacing: -0.01em;
 }
 
+.metrics-highlight {
+  color: #00FF66;
+}
+
 .metrics-right {
   flex: 1;
   display: grid;
