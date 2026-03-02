@@ -333,12 +333,12 @@
   border-radius: 4px;
 }
 
-/* Metrics Section - EXACT SPECS WITH GREEN NUMBERS */
+/* Metrics Section - ADJUSTED TO FIT IN FRAME */
 .metrics-section {
   position: relative;
   width: 100%;
   background: #0f0f0f;
-  padding: 5rem 4rem;
+  padding: 4rem 2rem;
   overflow: hidden;
   z-index: 1;
   margin-bottom: 80px;
@@ -351,22 +351,21 @@
 .metrics-container {
   position: relative;
   z-index: 2;
-  max-width: 1164px; /* Exact from new spec: 1164 x 320 */
-  height: 320px;
+  max-width: 1400px;
   margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 3rem;
+  gap: 2rem;
+  padding: 2rem 3rem;
 }
 
 .metrics-left {
-  flex: 0 0 auto;
-  max-width: 450px;
+  flex: 0 0 400px;
 }
 
 .metrics-heading {
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 400;
   color: #FCFCFE;
   line-height: 1.3;
@@ -379,9 +378,8 @@
   flex: 1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 2rem;
-  max-width: 654px;
-  height: 256px;
+  gap: 1.5rem;
+  max-width: 900px;
 }
 
 .metric-item {
@@ -393,18 +391,18 @@
 }
 
 .metric-number {
-  font-size: 87px; /* Larger size from spec: 87.24 x 67.2 */
+  font-size: 60px; /* Reduced from 87px to fit */
   font-weight: 700;
-  color: #7FFF7F; /* Bright GREEN color */
-  margin-bottom: 1rem;
+  color: #7FFF7F;
+  margin-bottom: 0.75rem;
   line-height: 1;
   font-family: 'Inter', sans-serif;
   text-shadow: 0 0 15px rgba(127, 255, 127, 0.5);
 }
 
 .metric-label {
-  font-size: 20px; /* Slightly larger for better visibility */
-  color: #FCFCFE; /* White for labels */
+  font-size: 16px;
+  color: #FCFCFE;
   font-weight: 400;
   line-height: 1.4;
   font-family: -apple-system, 'system-ui', 'Segoe UI', sans-serif;
