@@ -907,14 +907,6 @@
   font-size: 14px;
   color: rgba(255, 255, 255, 0.7);
 }
-  font-size: 14px;
-  color: #999;
-}
-
-.mobbin-logo {
-  font-size: 24px;
-  font-weight: 700;
-}
 
 /* Responsive Design */
 @media (max-width: 1400px) {
