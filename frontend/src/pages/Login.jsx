@@ -34,12 +34,16 @@ const Login = () => {
         throw new Error(data.detail || 'Invalid username or password');
       }
 
-      // Store token in localStorage
+      // Store token and user data in localStorage
       localStorage.setItem('token', data.access_token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('user_data', JSON.stringify({
+        user: data.user,
+        brand: data.brand,
+        features: data.features
+      }));
       
-      // Redirect to home
-      navigate('/');
+      // Redirect to dashboard
+      navigate('/dashboard');
     } catch (error) {
       setFormStatus({ loading: false, error: error.message });
     }

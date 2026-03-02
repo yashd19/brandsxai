@@ -37,17 +37,14 @@ MYSQL_CONFIG = {
     'database': os.environ.get('MYSQL_DATABASE', 'madoverai'),
     'charset': 'utf8mb4',
     'cursorclass': DictCursor,
-    'connect_timeout': 5,
-    'read_timeout': 30,
-    'write_timeout': 30,
+    'connect_timeout': 2,
+    'read_timeout': 10,
+    'write_timeout': 10,
     'autocommit': True
 }
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def try_mysql_connection():
@@ -56,28 +53,89 @@ def try_mysql_connection():
         conn = pymysql.connect(**MYSQL_CONFIG)
         return conn
     except pymysql.Error as e:
-        logger.warning(f"MySQL connection failed, using MongoDB fallback: {e}")
+        logger.warning(f"MySQL connection failed: {e}")
         return None
 
 def init_mysql_tables(connection):
-    """Initialize MySQL tables"""
+    """Initialize all MySQL tables"""
     try:
         with connection.cursor() as cursor:
-            # Create users table
+            # Admins table (MadOver AI employees)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS brandsxai_admins (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    username VARCHAR(100) NOT NULL UNIQUE,
+                    email VARCHAR(255),
+                    password_hash VARCHAR(255) NOT NULL,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_admin_username (username)
+                )
+            """)
+            
+            # Brands table (Customers)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS brandsxai_brands (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Features table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS brandsxai_features (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL UNIQUE,
+                    icon VARCHAR(50),
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Feature Pages table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS brandsxai_feature_pages (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    feature_id INT NOT NULL,
+                    name VARCHAR(100) NOT NULL,
+                    icon VARCHAR(50),
+                    route VARCHAR(100) NOT NULL,
+                    display_order INT DEFAULT 0,
+                    FOREIGN KEY (feature_id) REFERENCES brandsxai_features(id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Users table (Brand users)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS brandsxai_users (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     username VARCHAR(100) NOT NULL UNIQUE,
                     email VARCHAR(255),
                     password_hash VARCHAR(255) NOT NULL,
+                    brand_id INT,
+                    is_active BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_login TIMESTAMP NULL,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    INDEX idx_username (username)
+                    FOREIGN KEY (brand_id) REFERENCES brandsxai_brands(id) ON DELETE SET NULL,
+                    INDEX idx_user_username (username),
+                    INDEX idx_user_brand (brand_id)
                 )
             """)
             
-            # Create leads table
+            # User Features mapping
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS brandsxai_user_features (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    feature_id INT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES brandsxai_users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (feature_id) REFERENCES brandsxai_features(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_user_feature (user_id, feature_id)
+                )
+            """)
+            
+            # Leads table (for contact form)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS brandsxai_leads (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -86,18 +144,58 @@ def init_mysql_tables(connection):
                     company VARCHAR(255),
                     message TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    INDEX idx_email (email)
+                    INDEX idx_lead_email (email)
                 )
             """)
             
-            # Create default admin user if not exists
-            cursor.execute("SELECT id FROM brandsxai_users WHERE username = 'admin'")
+            # Insert default admin if not exists
+            cursor.execute("SELECT id FROM brandsxai_admins WHERE username = 'madoveradmin'")
             if not cursor.fetchone():
-                password_hash = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
+                password_hash = bcrypt.hashpw('admin@123'.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
                 cursor.execute(
-                    "INSERT INTO brandsxai_users (username, email, password_hash) VALUES (%s, %s, %s)",
-                    ('admin', 'admin@madoverai.com', password_hash)
+                    "INSERT INTO brandsxai_admins (username, email, password_hash) VALUES (%s, %s, %s)",
+                    ('madoveradmin', 'admin@madoverai.com', password_hash)
                 )
+                logger.info("Created default MadOver AI admin")
+            
+            # Insert default features if not exists
+            cursor.execute("SELECT id FROM brandsxai_features WHERE name = 'Voice AI'")
+            if not cursor.fetchone():
+                cursor.execute(
+                    "INSERT INTO brandsxai_features (name, icon, description) VALUES (%s, %s, %s)",
+                    ('Voice AI', 'Phone', 'Voice AI solutions for customer interactions')
+                )
+                voice_ai_id = cursor.lastrowid
+                
+                # Insert Voice AI pages
+                cursor.execute(
+                    "INSERT INTO brandsxai_feature_pages (feature_id, name, icon, route, display_order) VALUES (%s, %s, %s, %s, %s)",
+                    (voice_ai_id, 'Contacts', 'Users', '/dashboard/voice-ai/contacts', 1)
+                )
+                cursor.execute(
+                    "INSERT INTO brandsxai_feature_pages (feature_id, name, icon, route, display_order) VALUES (%s, %s, %s, %s, %s)",
+                    (voice_ai_id, 'Dashboards', 'LayoutDashboard', '/dashboard/voice-ai/dashboards', 2)
+                )
+                cursor.execute(
+                    "INSERT INTO brandsxai_feature_pages (feature_id, name, icon, route, display_order) VALUES (%s, %s, %s, %s, %s)",
+                    (voice_ai_id, 'Session', 'Clock', '/dashboard/voice-ai/session', 3)
+                )
+                logger.info("Created Voice AI feature with pages")
+            
+            cursor.execute("SELECT id FROM brandsxai_features WHERE name = 'Claim Processing'")
+            if not cursor.fetchone():
+                cursor.execute(
+                    "INSERT INTO brandsxai_features (name, icon, description) VALUES (%s, %s, %s)",
+                    ('Claim Processing', 'FileCheck', 'AI-powered claim processing automation')
+                )
+                logger.info("Created Claim Processing feature")
+            
+            # Insert sample brands if not exists
+            cursor.execute("SELECT id FROM brandsxai_brands WHERE name = 'Brand X'")
+            if not cursor.fetchone():
+                cursor.execute("INSERT INTO brandsxai_brands (name) VALUES (%s)", ('Brand X',))
+                cursor.execute("INSERT INTO brandsxai_brands (name) VALUES (%s)", ('Brand Y',))
+                logger.info("Created sample brands")
             
             connection.commit()
             logger.info("MySQL tables initialized successfully")
@@ -109,61 +207,86 @@ def init_mysql_tables(connection):
 async def init_mongodb_collections():
     """Initialize MongoDB collections with default data"""
     try:
-        # Check if admin user exists in MongoDB
-        admin = await mongo_db.brandsxai_users.find_one({"username": "admin"})
-        if not admin:
-            password_hash = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
-            await mongo_db.brandsxai_users.insert_one({
-                "id": 1,
-                "username": "admin",
-                "email": "admin@madoverai.com",
-                "password_hash": password_hash,
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-            logger.info("MongoDB: Created default admin user")
-        
         # Create indexes
+        await mongo_db.brandsxai_admins.create_index("username", unique=True)
         await mongo_db.brandsxai_users.create_index("username", unique=True)
-        await mongo_db.brandsxai_leads.create_index("email")
-        logger.info("MongoDB collections initialized successfully")
+        await mongo_db.brandsxai_brands.create_index("name", unique=True)
+        await mongo_db.brandsxai_features.create_index("name", unique=True)
+        
+        # Default admin
+        admin = await mongo_db.brandsxai_admins.find_one({"username": "madoveradmin"})
+        if not admin:
+            password_hash = bcrypt.hashpw('admin@123'.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
+            await mongo_db.brandsxai_admins.insert_one({
+                "id": 1, "username": "madoveradmin", "email": "admin@madoverai.com",
+                "password_hash": password_hash, "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        
+        # Default features
+        voice_ai = await mongo_db.brandsxai_features.find_one({"name": "Voice AI"})
+        if not voice_ai:
+            await mongo_db.brandsxai_features.insert_one({
+                "id": 1, "name": "Voice AI", "icon": "Phone", "description": "Voice AI solutions",
+                "pages": [
+                    {"id": 1, "name": "Contacts", "icon": "Users", "route": "/dashboard/voice-ai/contacts", "display_order": 1},
+                    {"id": 2, "name": "Dashboards", "icon": "LayoutDashboard", "route": "/dashboard/voice-ai/dashboards", "display_order": 2},
+                    {"id": 3, "name": "Session", "icon": "Clock", "route": "/dashboard/voice-ai/session", "display_order": 3}
+                ]
+            })
+        
+        claim = await mongo_db.brandsxai_features.find_one({"name": "Claim Processing"})
+        if not claim:
+            await mongo_db.brandsxai_features.insert_one({
+                "id": 2, "name": "Claim Processing", "icon": "FileCheck", "description": "AI claim processing", "pages": []
+            })
+        
+        # Default brands
+        brand_x = await mongo_db.brandsxai_brands.find_one({"name": "Brand X"})
+        if not brand_x:
+            await mongo_db.brandsxai_brands.insert_one({"id": 1, "name": "Brand X", "created_at": datetime.now(timezone.utc).isoformat()})
+            await mongo_db.brandsxai_brands.insert_one({"id": 2, "name": "Brand Y", "created_at": datetime.now(timezone.utc).isoformat()})
+        
+        logger.info("MongoDB collections initialized")
     except Exception as e:
         logger.error(f"MongoDB initialization error: {e}")
 
 # Create the main app
 app = FastAPI(title="MadOver AI API", version="1.0.0")
-
-# Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
-
-# Security
 security = HTTPBearer(auto_error=False)
 
-# Pydantic Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class StatusCheckCreate(BaseModel):
-    client_name: str
+# ==================== PYDANTIC MODELS ====================
 
 class LoginRequest(BaseModel):
     username: str
     password: str
 
-class LoginResponse(BaseModel):
+class AdminLoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    admin: dict
+    is_admin: bool = True
+
+class UserLoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: dict
-    db_source: str = "mysql"  # Indicates which DB was used
+    brand: dict
+    features: List[dict]
+    is_admin: bool = False
 
-class UserResponse(BaseModel):
-    id: int
+class CreateUserRequest(BaseModel):
     username: str
-    email: Optional[str]
-    is_active: bool
+    password: str
+    email: Optional[str] = None
+    brand_id: int
+    feature_ids: List[int]
+
+class UpdateUserFeaturesRequest(BaseModel):
+    feature_ids: List[int]
+
+class CreateBrandRequest(BaseModel):
+    name: str
 
 class LeadCreate(BaseModel):
     name: str
@@ -171,16 +294,8 @@ class LeadCreate(BaseModel):
     company: Optional[str] = None
     message: Optional[str] = None
 
-class LeadResponse(BaseModel):
-    id: int
-    name: str
-    email: str
-    company: Optional[str] = None
-    message: Optional[str] = None
-    created_at: datetime
-    db_source: str = "mysql"
+# ==================== JWT HELPERS ====================
 
-# JWT Helper Functions
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
@@ -189,135 +304,381 @@ def create_access_token(data: dict) -> str:
 
 def verify_token(token: str) -> Optional[dict]:
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
-    except jwt.ExpiredSignatureError:
-        return None
-    except jwt.InvalidTokenError:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
         return None
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Optional[dict]:
     if not credentials:
         return None
-    payload = verify_token(credentials.credentials)
-    return payload
+    return verify_token(credentials.credentials)
 
-# ==================== AUTH ENDPOINTS ====================
+# ==================== ADMIN AUTH ====================
 
-@api_router.post("/auth/login", response_model=LoginResponse)
-async def login(request: LoginRequest):
-    """Authenticate user - tries MySQL first, falls back to MongoDB"""
-    
-    # Try MySQL first
+@api_router.post("/admin/login")
+async def admin_login(request: LoginRequest):
+    """MadOver AI Admin login"""
     mysql_conn = try_mysql_connection()
     if mysql_conn:
         try:
             with mysql_conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT id, username, email, password_hash, is_active FROM brandsxai_users WHERE username = %s",
-                    (request.username,)
-                )
+                cursor.execute("SELECT * FROM brandsxai_admins WHERE username = %s AND is_active = TRUE", (request.username,))
+                admin = cursor.fetchone()
+                if admin and bcrypt.checkpw(request.password.encode('utf-8'), admin['password_hash'].encode('utf-8')):
+                    token = create_access_token({"sub": str(admin['id']), "username": admin['username'], "type": "admin"})
+                    return {"access_token": token, "token_type": "bearer", "admin": {"id": admin['id'], "username": admin['username']}, "is_admin": True, "db_source": "mysql"}
+        except Exception as e:
+            logger.warning(f"MySQL admin login error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    admin = await mongo_db.brandsxai_admins.find_one({"username": request.username, "is_active": True})
+    if admin and bcrypt.checkpw(request.password.encode('utf-8'), admin['password_hash'].encode('utf-8')):
+        token = create_access_token({"sub": str(admin.get('id', 1)), "username": admin['username'], "type": "admin"})
+        return {"access_token": token, "token_type": "bearer", "admin": {"id": admin.get('id', 1), "username": admin['username']}, "is_admin": True, "db_source": "mongodb"}
+    
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+# ==================== USER AUTH ====================
+
+@api_router.post("/auth/login")
+async def user_login(request: LoginRequest):
+    """Brand user login"""
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                # Get user with brand
+                cursor.execute("""
+                    SELECT u.*, b.name as brand_name 
+                    FROM brandsxai_users u 
+                    LEFT JOIN brandsxai_brands b ON u.brand_id = b.id 
+                    WHERE u.username = %s AND u.is_active = TRUE
+                """, (request.username,))
                 user = cursor.fetchone()
                 
-                if user:
-                    if not user['is_active']:
-                        raise HTTPException(status_code=401, detail="Account is disabled")
+                if user and bcrypt.checkpw(request.password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+                    # Get user features with pages
+                    cursor.execute("""
+                        SELECT f.*, GROUP_CONCAT(
+                            CONCAT(fp.id, ':', fp.name, ':', fp.icon, ':', fp.route, ':', fp.display_order) 
+                            ORDER BY fp.display_order
+                        ) as pages
+                        FROM brandsxai_user_features uf
+                        JOIN brandsxai_features f ON uf.feature_id = f.id
+                        LEFT JOIN brandsxai_feature_pages fp ON f.id = fp.feature_id
+                        WHERE uf.user_id = %s
+                        GROUP BY f.id
+                    """, (user['id'],))
+                    features_raw = cursor.fetchall()
                     
-                    if bcrypt.checkpw(request.password.encode('utf-8'), user['password_hash'].encode('utf-8')):
-                        # Update last login
-                        cursor.execute("UPDATE brandsxai_users SET last_login = NOW() WHERE id = %s", (user['id'],))
-                        mysql_conn.commit()
-                        
-                        token_data = {"sub": str(user['id']), "username": user['username'], "email": user['email']}
-                        access_token = create_access_token(token_data)
-                        
-                        logger.info(f"User {request.username} logged in via MySQL")
-                        return LoginResponse(
-                            access_token=access_token,
-                            user={"id": user['id'], "username": user['username'], "email": user['email']},
-                            db_source="mysql"
-                        )
-                    else:
-                        raise HTTPException(status_code=401, detail="Invalid username or password")
-                # User not found in MySQL, will try MongoDB
-        except HTTPException:
-            raise
+                    features = []
+                    for f in features_raw:
+                        feature = {"id": f['id'], "name": f['name'], "icon": f['icon'], "description": f['description'], "pages": []}
+                        if f['pages']:
+                            for p in f['pages'].split(','):
+                                parts = p.split(':')
+                                if len(parts) >= 5:
+                                    feature['pages'].append({"id": int(parts[0]), "name": parts[1], "icon": parts[2], "route": parts[3], "display_order": int(parts[4])})
+                        features.append(feature)
+                    
+                    # Update last login
+                    cursor.execute("UPDATE brandsxai_users SET last_login = NOW() WHERE id = %s", (user['id'],))
+                    mysql_conn.commit()
+                    
+                    token = create_access_token({
+                        "sub": str(user['id']), "username": user['username'], "type": "user",
+                        "brand_id": user['brand_id'], "brand_name": user['brand_name']
+                    })
+                    
+                    return {
+                        "access_token": token, "token_type": "bearer",
+                        "user": {"id": user['id'], "username": user['username'], "email": user['email']},
+                        "brand": {"id": user['brand_id'], "name": user['brand_name']},
+                        "features": features, "is_admin": False, "db_source": "mysql"
+                    }
         except Exception as e:
-            logger.warning(f"MySQL login error, trying MongoDB: {e}")
+            logger.warning(f"MySQL user login error: {e}")
         finally:
             mysql_conn.close()
     
     # MongoDB fallback
-    logger.info(f"Trying MongoDB fallback for user: {request.username}")
-    user = await mongo_db.brandsxai_users.find_one({"username": request.username})
+    user = await mongo_db.brandsxai_users.find_one({"username": request.username, "is_active": True})
+    if user and bcrypt.checkpw(request.password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+        brand = await mongo_db.brandsxai_brands.find_one({"id": user.get('brand_id')})
+        
+        # Get features
+        feature_ids = user.get('feature_ids', [])
+        features = []
+        async for f in mongo_db.brandsxai_features.find({"id": {"$in": feature_ids}}):
+            features.append({"id": f['id'], "name": f['name'], "icon": f['icon'], "description": f.get('description', ''), "pages": f.get('pages', [])})
+        
+        await mongo_db.brandsxai_users.update_one({"_id": user['_id']}, {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}})
+        
+        token = create_access_token({
+            "sub": str(user.get('id', 1)), "username": user['username'], "type": "user",
+            "brand_id": user.get('brand_id'), "brand_name": brand['name'] if brand else None
+        })
+        
+        return {
+            "access_token": token, "token_type": "bearer",
+            "user": {"id": user.get('id', 1), "username": user['username'], "email": user.get('email', '')},
+            "brand": {"id": brand['id'], "name": brand['name']} if brand else None,
+            "features": features, "is_admin": False, "db_source": "mongodb"
+        }
     
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    
-    if not user.get('is_active', True):
-        raise HTTPException(status_code=401, detail="Account is disabled")
-    
-    if not bcrypt.checkpw(request.password.encode('utf-8'), user['password_hash'].encode('utf-8')):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    
-    # Update last login
-    await mongo_db.brandsxai_users.update_one(
-        {"username": request.username},
-        {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}}
-    )
-    
-    token_data = {"sub": str(user.get('id', 1)), "username": user['username'], "email": user.get('email', '')}
-    access_token = create_access_token(token_data)
-    
-    logger.info(f"User {request.username} logged in via MongoDB (fallback)")
-    return LoginResponse(
-        access_token=access_token,
-        user={"id": user.get('id', 1), "username": user['username'], "email": user.get('email', '')},
-        db_source="mongodb"
-    )
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
-@api_router.get("/auth/me", response_model=UserResponse)
-async def get_me(current_user: dict = Depends(get_current_user)):
-    """Get current user - tries MySQL first, falls back to MongoDB"""
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+# ==================== ADMIN: USER MANAGEMENT ====================
+
+@api_router.post("/admin/users")
+async def create_user(request: CreateUserRequest, current_user: dict = Depends(get_current_user)):
+    """Create a new brand user (Admin only)"""
+    if not current_user or current_user.get('type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
     
-    # Try MySQL first
+    password_hash = bcrypt.hashpw(request.password.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
+    
     mysql_conn = try_mysql_connection()
     if mysql_conn:
         try:
             with mysql_conn.cursor() as cursor:
+                # Create user
                 cursor.execute(
-                    "SELECT id, username, email, is_active FROM brandsxai_users WHERE id = %s",
-                    (current_user['sub'],)
+                    "INSERT INTO brandsxai_users (username, email, password_hash, brand_id) VALUES (%s, %s, %s, %s)",
+                    (request.username, request.email, password_hash, request.brand_id)
                 )
-                user = cursor.fetchone()
-                if user:
-                    return UserResponse(**user)
+                user_id = cursor.lastrowid
+                
+                # Add feature access
+                for feature_id in request.feature_ids:
+                    cursor.execute(
+                        "INSERT INTO brandsxai_user_features (user_id, feature_id) VALUES (%s, %s)",
+                        (user_id, feature_id)
+                    )
+                
+                mysql_conn.commit()
+                return {"message": "User created", "user_id": user_id, "db_source": "mysql"}
+        except pymysql.IntegrityError:
+            raise HTTPException(status_code=400, detail="Username already exists")
         except Exception as e:
-            logger.warning(f"MySQL get_me error, trying MongoDB: {e}")
+            logger.error(f"MySQL create user error: {e}")
         finally:
             mysql_conn.close()
     
     # MongoDB fallback
-    user = await mongo_db.brandsxai_users.find_one({"username": current_user['username']})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    existing = await mongo_db.brandsxai_users.find_one({"username": request.username})
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
     
-    return UserResponse(
-        id=user.get('id', 1),
-        username=user['username'],
-        email=user.get('email', ''),
-        is_active=user.get('is_active', True)
-    )
+    last_user = await mongo_db.brandsxai_users.find_one(sort=[("id", -1)])
+    new_id = (last_user.get('id', 0) + 1) if last_user else 1
+    
+    await mongo_db.brandsxai_users.insert_one({
+        "id": new_id, "username": request.username, "email": request.email,
+        "password_hash": password_hash, "brand_id": request.brand_id,
+        "feature_ids": request.feature_ids, "is_active": True,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"message": "User created", "user_id": new_id, "db_source": "mongodb"}
 
-# ==================== LEAD ENDPOINTS ====================
+@api_router.get("/admin/users")
+async def get_all_users(current_user: dict = Depends(get_current_user)):
+    """Get all users (Admin only)"""
+    if not current_user or current_user.get('type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT u.id, u.username, u.email, u.is_active, u.created_at, u.last_login,
+                           b.id as brand_id, b.name as brand_name,
+                           GROUP_CONCAT(f.id) as feature_ids, GROUP_CONCAT(f.name) as feature_names
+                    FROM brandsxai_users u
+                    LEFT JOIN brandsxai_brands b ON u.brand_id = b.id
+                    LEFT JOIN brandsxai_user_features uf ON u.id = uf.user_id
+                    LEFT JOIN brandsxai_features f ON uf.feature_id = f.id
+                    GROUP BY u.id
+                    ORDER BY u.created_at DESC
+                """)
+                users = cursor.fetchall()
+                
+                result = []
+                for u in users:
+                    result.append({
+                        "id": u['id'], "username": u['username'], "email": u['email'],
+                        "is_active": u['is_active'], "created_at": u['created_at'], "last_login": u['last_login'],
+                        "brand": {"id": u['brand_id'], "name": u['brand_name']} if u['brand_id'] else None,
+                        "features": [{"id": int(fid), "name": fn} for fid, fn in zip(
+                            (u['feature_ids'] or '').split(','), (u['feature_names'] or '').split(',')
+                        ) if fid and fn]
+                    })
+                
+                return {"users": result, "db_source": "mysql"}
+        except Exception as e:
+            logger.error(f"MySQL get users error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    users = []
+    async for u in mongo_db.brandsxai_users.find({}, {"_id": 0, "password_hash": 0}):
+        brand = await mongo_db.brandsxai_brands.find_one({"id": u.get('brand_id')})
+        features = []
+        for fid in u.get('feature_ids', []):
+            f = await mongo_db.brandsxai_features.find_one({"id": fid})
+            if f:
+                features.append({"id": f['id'], "name": f['name']})
+        users.append({**u, "brand": brand, "features": features})
+    
+    return {"users": users, "db_source": "mongodb"}
+
+@api_router.put("/admin/users/{user_id}/features")
+async def update_user_features(user_id: int, request: UpdateUserFeaturesRequest, current_user: dict = Depends(get_current_user)):
+    """Update user's feature access (Admin only)"""
+    if not current_user or current_user.get('type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                # Remove existing features
+                cursor.execute("DELETE FROM brandsxai_user_features WHERE user_id = %s", (user_id,))
+                
+                # Add new features
+                for feature_id in request.feature_ids:
+                    cursor.execute(
+                        "INSERT INTO brandsxai_user_features (user_id, feature_id) VALUES (%s, %s)",
+                        (user_id, feature_id)
+                    )
+                
+                mysql_conn.commit()
+                return {"message": "Features updated", "db_source": "mysql"}
+        except Exception as e:
+            logger.error(f"MySQL update features error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    await mongo_db.brandsxai_users.update_one(
+        {"id": user_id},
+        {"$set": {"feature_ids": request.feature_ids}}
+    )
+    return {"message": "Features updated", "db_source": "mongodb"}
+
+@api_router.delete("/admin/users/{user_id}")
+async def delete_user(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Delete/deactivate a user (Admin only)"""
+    if not current_user or current_user.get('type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("UPDATE brandsxai_users SET is_active = FALSE WHERE id = %s", (user_id,))
+                mysql_conn.commit()
+                return {"message": "User deactivated", "db_source": "mysql"}
+        except Exception as e:
+            logger.error(f"MySQL delete user error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    await mongo_db.brandsxai_users.update_one({"id": user_id}, {"$set": {"is_active": False}})
+    return {"message": "User deactivated", "db_source": "mongodb"}
+
+# ==================== ADMIN: BRAND MANAGEMENT ====================
+
+@api_router.get("/admin/brands")
+async def get_brands(current_user: dict = Depends(get_current_user)):
+    """Get all brands (Admin only)"""
+    if not current_user or current_user.get('type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("SELECT * FROM brandsxai_brands ORDER BY name")
+                return {"brands": cursor.fetchall(), "db_source": "mysql"}
+        except Exception as e:
+            logger.error(f"MySQL get brands error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    brands = await mongo_db.brandsxai_brands.find({}, {"_id": 0}).to_list(100)
+    return {"brands": brands, "db_source": "mongodb"}
+
+@api_router.post("/admin/brands")
+async def create_brand(request: CreateBrandRequest, current_user: dict = Depends(get_current_user)):
+    """Create a new brand (Admin only)"""
+    if not current_user or current_user.get('type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("INSERT INTO brandsxai_brands (name) VALUES (%s)", (request.name,))
+                mysql_conn.commit()
+                return {"message": "Brand created", "brand_id": cursor.lastrowid, "db_source": "mysql"}
+        except pymysql.IntegrityError:
+            raise HTTPException(status_code=400, detail="Brand already exists")
+        except Exception as e:
+            logger.error(f"MySQL create brand error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    existing = await mongo_db.brandsxai_brands.find_one({"name": request.name})
+    if existing:
+        raise HTTPException(status_code=400, detail="Brand already exists")
+    
+    last_brand = await mongo_db.brandsxai_brands.find_one(sort=[("id", -1)])
+    new_id = (last_brand.get('id', 0) + 1) if last_brand else 1
+    
+    await mongo_db.brandsxai_brands.insert_one({
+        "id": new_id, "name": request.name, "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"message": "Brand created", "brand_id": new_id, "db_source": "mongodb"}
+
+# ==================== ADMIN: FEATURE MANAGEMENT ====================
+
+@api_router.get("/admin/features")
+async def get_features(current_user: dict = Depends(get_current_user)):
+    """Get all features (Admin only)"""
+    if not current_user or current_user.get('type') != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("SELECT * FROM brandsxai_features ORDER BY name")
+                features = cursor.fetchall()
+                
+                for f in features:
+                    cursor.execute("SELECT * FROM brandsxai_feature_pages WHERE feature_id = %s ORDER BY display_order", (f['id'],))
+                    f['pages'] = cursor.fetchall()
+                
+                return {"features": features, "db_source": "mysql"}
+        except Exception as e:
+            logger.error(f"MySQL get features error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    features = await mongo_db.brandsxai_features.find({}, {"_id": 0}).to_list(100)
+    return {"features": features, "db_source": "mongodb"}
+
+# ==================== LEADS ====================
 
 @api_router.post("/leads")
 async def create_lead(lead: LeadCreate):
-    """Create lead - tries MySQL first, falls back to MongoDB"""
-    
-    # Try MySQL first
+    """Create lead from contact form"""
     mysql_conn = try_mysql_connection()
     if mysql_conn:
         try:
@@ -327,135 +688,41 @@ async def create_lead(lead: LeadCreate):
                     (lead.name, lead.email, lead.company, lead.message)
                 )
                 mysql_conn.commit()
-                
-                lead_id = cursor.lastrowid
-                cursor.execute("SELECT * FROM brandsxai_leads WHERE id = %s", (lead_id,))
-                result = cursor.fetchone()
-                
-                logger.info(f"Lead created in MySQL: {lead.email}")
-                return {**result, "db_source": "mysql"}
+                return {"message": "Lead created", "id": cursor.lastrowid, "db_source": "mysql"}
         except Exception as e:
-            logger.warning(f"MySQL create_lead error, trying MongoDB: {e}")
+            logger.error(f"MySQL create lead error: {e}")
         finally:
             mysql_conn.close()
     
-    # MongoDB fallback
-    # Get next ID
     last_lead = await mongo_db.brandsxai_leads.find_one(sort=[("id", -1)])
-    next_id = (last_lead.get('id', 0) + 1) if last_lead else 1
+    new_id = (last_lead.get('id', 0) + 1) if last_lead else 1
     
-    lead_doc = {
-        "id": next_id,
-        "name": lead.name,
-        "email": lead.email,
-        "company": lead.company,
-        "message": lead.message,
-        "created_at": datetime.now(timezone.utc)
-    }
-    await mongo_db.brandsxai_leads.insert_one(lead_doc)
-    
-    logger.info(f"Lead created in MongoDB (fallback): {lead.email}")
-    return {
-        "id": next_id,
-        "name": lead.name,
-        "email": lead.email,
-        "company": lead.company,
-        "message": lead.message,
-        "created_at": lead_doc['created_at'],
-        "db_source": "mongodb"
-    }
+    await mongo_db.brandsxai_leads.insert_one({
+        "id": new_id, "name": lead.name, "email": lead.email, "company": lead.company,
+        "message": lead.message, "created_at": datetime.now(timezone.utc)
+    })
+    return {"message": "Lead created", "id": new_id, "db_source": "mongodb"}
 
-@api_router.get("/leads")
-async def get_leads(current_user: dict = Depends(get_current_user)):
-    """Get all leads - tries MySQL first, falls back to MongoDB"""
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
-    # Try MySQL first
-    mysql_conn = try_mysql_connection()
-    if mysql_conn:
-        try:
-            with mysql_conn.cursor() as cursor:
-                cursor.execute("SELECT * FROM brandsxai_leads ORDER BY created_at DESC")
-                results = cursor.fetchall()
-                logger.info(f"Fetched {len(results)} leads from MySQL")
-                return {"leads": results, "db_source": "mysql", "count": len(results)}
-        except Exception as e:
-            logger.warning(f"MySQL get_leads error, trying MongoDB: {e}")
-        finally:
-            mysql_conn.close()
-    
-    # MongoDB fallback
-    leads = await mongo_db.brandsxai_leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    logger.info(f"Fetched {len(leads)} leads from MongoDB (fallback)")
-    return {"leads": leads, "db_source": "mongodb", "count": len(leads)}
-
-# ==================== UTILITY ENDPOINTS ====================
+# ==================== UTILITY ====================
 
 @api_router.get("/")
 async def root():
-    return {"message": "MadOver AI API", "version": "1.0.0"}
+    return {"message": "MadOver AI API", "version": "2.0.0"}
 
 @api_router.get("/db-status")
 async def db_status():
-    """Check database connection status"""
-    mysql_status = False
-    mysql_conn = try_mysql_connection()
-    if mysql_conn:
-        mysql_status = True
-        mysql_conn.close()
-    
-    return {
-        "mysql_available": mysql_status,
-        "mongodb_available": True,
-        "primary_db": "mysql" if mysql_status else "mongodb",
-        "mysql_config": {
-            "host": MYSQL_CONFIG['host'],
-            "port": MYSQL_CONFIG['port']
-        }
-    }
+    mysql_status = try_mysql_connection() is not None
+    return {"mysql_available": mysql_status, "mongodb_available": True, "primary_db": "mysql" if mysql_status else "mongodb"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    await mongo_db.status_checks.insert_one(doc)
-    return status_obj
-
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    status_checks = await mongo_db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    return status_checks
-
-# Include router
+# Include router & middleware
 app.include_router(api_router)
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize databases on startup"""
-    # Try MySQL first
     mysql_conn = try_mysql_connection()
     if mysql_conn:
         init_mysql_tables(mysql_conn)
         mysql_conn.close()
-        logger.info("Primary database: MySQL")
-    else:
-        logger.info("MySQL unavailable, using MongoDB as primary")
-    
-    # Always initialize MongoDB as fallback
     await init_mongodb_collections()
-    logger.info("MongoDB fallback ready")
+    logger.info("Database initialization complete")

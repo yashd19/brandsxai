@@ -312,6 +312,7 @@ const HomeNew = () => {
               <a href="#" className="footer-link">Solutions</a>
               <a href="#" className="footer-link">Help center</a>
               <Link to="/contact" className="footer-link">For brands</Link>
+              <Link to="/admin/login" className="footer-link">Admin Portal</Link>
             </div>
             
             <div className="footer-column">
