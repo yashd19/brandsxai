@@ -14,7 +14,7 @@ const HomeNew = () => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // Smaller product cards - REDUCED & OPTIMIZED
+  // Product cards SURROUNDING MadOver AI from all sides
   const productCards = [
     // TOP LEFT AREA
     {
@@ -23,7 +23,7 @@ const HomeNew = () => {
       image: 'https://images.unsplash.com/photo-1770732766528-d0e9fd0df233?w=400&q=80',
       rating: 5,
       reviews: '227',
-      position: { top: '8%', left: '6%' },
+      position: { top: '10%', left: '6%' },
       zIndex: 5
     },
     {
@@ -32,7 +32,7 @@ const HomeNew = () => {
       image: 'https://images.unsplash.com/photo-1772026251816-a6d382c67b3b?w=400&q=80',
       rating: 5,
       reviews: '156',
-      position: { top: '4%', left: '22%' },
+      position: { top: '6%', left: '24%' },
       zIndex: 3
     },
     
@@ -43,8 +43,8 @@ const HomeNew = () => {
       image: 'https://images.unsplash.com/photo-1625860191460-10a66c7384fb?w=400&q=80',
       rating: 5,
       reviews: '89',
-      position: { top: '8%', right: '6%' },
-      zIndex: 5 // Higher z-index
+      position: { top: '10%', right: '6%' },
+      zIndex: 5
     },
     {
       id: 4,
@@ -52,18 +52,40 @@ const HomeNew = () => {
       image: 'https://images.unsplash.com/photo-1760446032400-506ec8963e6a?w=400&q=80',
       rating: 5,
       reviews: '234',
-      position: { top: '4%', right: '22%' },
+      position: { top: '6%', right: '24%' },
       zIndex: 6
     },
     
-    // BOTTOM AREA - MOVED LOWER
+    // MIDDLE LEFT - AT LOGO HEIGHT
+    {
+      id: 5,
+      name: 'Cookware Set',
+      image: 'https://images.unsplash.com/photo-1584990347163-2b86b71390d6?w=400&q=80',
+      rating: 5,
+      reviews: '38.5k',
+      position: { top: '38%', left: '3%' }, // Left side at logo height
+      zIndex: 4
+    },
+    
+    // MIDDLE RIGHT - AT LOGO HEIGHT
+    {
+      id: 6,
+      name: 'Coffee Mug Premium',
+      image: 'https://images.unsplash.com/photo-1548287914-44c700af2ed5?w=400&q=80',
+      rating: 4,
+      reviews: '91',
+      position: { top: '38%', right: '3%' }, // Right side at logo height
+      zIndex: 4
+    },
+    
+    // BOTTOM LEFT AREA
     {
       id: 8,
       name: 'Organic Dark Chocolate B...',
       image: 'https://images.unsplash.com/photo-1760307244852-190a6c5d2a5f?w=400&q=80',
       rating: 5,
       reviews: '52',
-      position: { bottom: '12%', left: '8%' }, // Moved lower
+      position: { bottom: '12%', left: '6%' },
       zIndex: 7
     },
     {
@@ -72,16 +94,18 @@ const HomeNew = () => {
       image: 'https://images.unsplash.com/photo-1685384338018-1774719d5b69?w=400&q=80',
       rating: 5,
       reviews: '178',
-      position: { bottom: '8%', left: '26%' }, // Moved lower
+      position: { bottom: '8%', left: '24%' },
       zIndex: 5
     },
+    
+    // BOTTOM RIGHT AREA
     {
       id: 10,
       name: 'Terry Stripe Slippers (Bone...',
       image: 'https://images.unsplash.com/photo-1656335362192-2bc9051b1824?w=400&q=80',
       rating: 4,
       reviews: '2',
-      position: { bottom: '12%', right: '8%' }, // Moved lower
+      position: { bottom: '12%', right: '6%' },
       zIndex: 6
     },
     {
@@ -90,7 +114,7 @@ const HomeNew = () => {
       image: 'https://images.unsplash.com/photo-1540749046540-b7d8f98c7e4c?w=400&q=80',
       rating: 5,
       reviews: '324',
-      position: { bottom: '8%', right: '26%' }, // Moved lower
+      position: { bottom: '8%', right: '24%' },
       zIndex: 4
     }
   ];
