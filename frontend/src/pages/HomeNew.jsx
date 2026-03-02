@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Home as HomeIcon, Grid, ShoppingCart, Tag, Heart, Settings } from 'lucide-react';
+import { Home as HomeIcon, Grid, ShoppingCart, Tag, Heart, Settings, Send, Loader2 } from 'lucide-react';
 import './HomeNew.css';
 
 const HomeNew = () => {
