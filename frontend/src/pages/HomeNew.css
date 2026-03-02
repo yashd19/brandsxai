@@ -93,19 +93,19 @@
 }
 
 /* Empty placeholder */.case-study-title {
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 700;
   color: #333;
-  margin-bottom: 1rem;
+  margin-bottom: 0.875rem;
   line-height: 1.2;
   font-family: -apple-system, 'system-ui', 'Segoe UI', sans-serif;
 }
 
 .case-study-description {
-  font-size: 1rem;
+  font-size: 0.9375rem;
   color: #666;
   line-height: 1.6;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
   font-family: -apple-system, 'system-ui', 'Segoe UI', sans-serif;
 }
 
@@ -115,9 +115,9 @@
   gap: 0.5rem;
   background: #333;
   color: white;
-  padding: 1rem 1.5rem;
+  padding: 0.875rem 1.25rem;
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   font-weight: 500;
   text-decoration: none;
   transition: all 0.3s ease;
