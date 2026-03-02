@@ -339,7 +339,7 @@
   background: #0f0f0f;
   padding: 6rem 4rem;
   overflow: hidden;
-  margin-top: calc(100vh - 80px); /* Below hero section */
+  z-index: 50; /* Below footer but above hero */
 }
 
 .metrics-background {
