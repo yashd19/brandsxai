@@ -337,14 +337,15 @@
 
 .sidebar-signin {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   color: #999;
   text-decoration: none;
   cursor: pointer;
   transition: all 0.2s ease;
   padding: 8px;
+  white-space: nowrap;
 }
 
 .sidebar-signin:hover {
