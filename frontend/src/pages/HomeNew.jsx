@@ -273,24 +273,17 @@ const HomeNew = () => {
           </div>
 
           <div className="case-study-card">
-            <div className="case-study-image" style={{
-              background: 'linear-gradient(135deg, #A8D8EA 0%, #87CEEB 100%)',
-              position: 'relative'
-            }}>
-              <div className="tech-icons">
-                <div className="icon-circle" style={{top: '20%', left: '15%'}}>📱</div>
-                <div className="icon-circle" style={{top: '15%', left: '35%'}}>💻</div>
-                <div className="icon-circle" style={{top: '30%', left: '10%'}}>🎧</div>
-                <div className="icon-circle" style={{bottom: '25%', left: '20%'}}>⌚</div>
-                <div className="connecting-lines"></div>
-              </div>
-            </div>
+            <img 
+              src="https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=1200&q=80" 
+              alt="City skyline with network connections" 
+              className="case-study-bg-image"
+            />
             <div className="case-study-content-card">
               <h2 className="case-study-title">
                 Increase your revenue and reduce customer churn
               </h2>
               <p className="case-study-description">
-                By introducing whole home consumer electronics protection plans
+                By offering device protection plans your customers want with features they love
               </p>
               <Link to="/case-study/revenue-churn" className="learn-more-button">
                 Learn More →
