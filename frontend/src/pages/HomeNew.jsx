@@ -145,7 +145,7 @@ const HomeNew = () => {
           </Link>
         </div>
         <div className="sidebar-bottom">
-          <Link to="/contact" className="sidebar-signin">
+          <Link to="/login" className="sidebar-signin">
             <User size={18} />
             <span className="signin-text">sign in</span>
           </Link>
