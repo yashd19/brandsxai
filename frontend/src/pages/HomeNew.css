@@ -1,3 +1,193 @@
+/* Case Studies Section */
+.case-studies-section {
+  width: 100%;
+  background: white;
+  padding: 5rem 4rem;
+  position: relative;
+}
+
+.case-studies-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.case-studies-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 3rem;
+  flex-wrap: wrap;
+}
+
+.tab-button {
+  padding: 0.75rem 2rem;
+  background: transparent;
+  border: 2px solid #E5E5E5;
+  border-radius: 8px;
+  font-size: 1rem;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: -apple-system, 'system-ui', 'Segoe UI', sans-serif;
+}
+
+.tab-button:hover {
+  border-color: #5534eb;
+  color: #5534eb;
+}
+
+.tab-button.active {
+  background: #5534eb;
+  border-color: #5534eb;
+  color: white;
+}
+
+.case-study-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: white;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  height: 560px;
+}
+
+.case-study-image {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.case-study-bg-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tech-icons {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.icon-circle {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(8px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+  animation: float 3s ease-in-out infinite;
+}
+
+.connecting-lines {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    radial-gradient(circle, rgba(255,255,255,0.3) 2px, transparent 2px),
+    radial-gradient(circle, rgba(255,255,255,0.2) 1px, transparent 1px);
+  background-size: 50px 50px, 25px 25px;
+  opacity: 0.5;
+}
+
+.case-study-content-card {
+  background: #D4E8F0;
+  padding: 4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+}
+
+.case-study-title {
+  font-size: 2.5rem;
+  font-weight: 400;
+  color: #333;
+  margin-bottom: 1.5rem;
+  line-height: 1.2;
+  font-family: -apple-system, 'system-ui', 'Segoe UI', sans-serif;
+}
+
+.case-study-description {
+  font-size: 1.125rem;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 2.5rem;
+  font-family: -apple-system, 'system-ui', 'Segoe UI', sans-serif;
+}
+
+.learn-more-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #333;
+  color: white;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  width: fit-content;
+  font-family: -apple-system, 'system-ui', 'Segoe UI', sans-serif;
+}
+
+.learn-more-button:hover {
+  background: #000;
+  transform: translateX(4px);
+}
+
+/* Responsive Case Studies */
+@media (max-width: 1024px) {
+  .case-study-card {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .case-study-image {
+    height: 300px;
+  }
+
+  .case-study-content-card {
+    padding: 3rem 2rem;
+  }
+
+  .case-study-title {
+    font-size: 2rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .case-studies-section {
+    padding: 3rem 1.5rem;
+  }
+
+  .tab-button {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .case-study-content-card {
+    padding: 2rem 1.5rem;
+  }
+
+  .case-study-title {
+    font-size: 1.75rem;
+  }
+
+  .case-study-description {
+    font-size: 1rem;
+  }
+}
+
+
 /* Main Container - Enable scrolling */
 .home-new-container {
   width: 100vw;

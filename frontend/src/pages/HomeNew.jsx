@@ -259,6 +259,66 @@ const HomeNew = () => {
         </div>
       </section>
 
+      {/* Case Studies Section */}
+      <section className="case-studies-section">
+        <div className="case-studies-container">
+          <div className="case-studies-tabs">
+            <button className="tab-button">OEM</button>
+            <button className="tab-button">Carriers & MVNOs</button>
+            <button className="tab-button active">ISPs & BSPs</button>
+            <button className="tab-button">Home Warranty</button>
+            <button className="tab-button">Retail</button>
+          </div>
+
+          <div className="case-study-card">
+            <div className="case-study-image" style={{
+              background: 'linear-gradient(135deg, #A8D8EA 0%, #87CEEB 100%)',
+              position: 'relative'
+            }}>
+              <div className="tech-icons">
+                <div className="icon-circle" style={{top: '20%', left: '15%'}}>📱</div>
+                <div className="icon-circle" style={{top: '15%', left: '35%'}}>💻</div>
+                <div className="icon-circle" style={{top: '30%', left: '10%'}}>🎧</div>
+                <div className="icon-circle" style={{bottom: '25%', left: '20%'}}>⌚</div>
+                <div className="connecting-lines"></div>
+              </div>
+            </div>
+            <div className="case-study-content-card">
+              <h2 className="case-study-title">
+                Increase your revenue and reduce customer churn
+              </h2>
+              <p className="case-study-description">
+                By introducing whole home consumer electronics protection plans
+              </p>
+              <Link to="/case-study/revenue-churn" className="learn-more-button">
+                Learn More →
+              </Link>
+            </div>
+          </div>
+
+          <div className="case-study-card" style={{marginTop: '2rem'}}>
+            <div className="case-study-image">
+              <img 
+                src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&q=80" 
+                alt="Warehouse" 
+                className="case-study-bg-image"
+              />
+            </div>
+            <div className="case-study-content-card">
+              <h2 className="case-study-title">
+                Enable your brand to build your own 'BrandCare'
+              </h2>
+              <p className="case-study-description">
+                By providing your customers with superior, turn-key Product Protection Offerings and Affordability programs
+              </p>
+              <Link to="/case-study/brandcare" className="learn-more-button">
+                Learn More →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Bottom Footer */}
       <footer className="hero-footer">
         <div className="footer-left">
