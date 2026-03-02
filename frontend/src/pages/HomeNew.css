@@ -173,6 +173,37 @@
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
 }
 
+/* Floating Products without card background */
+.floating-product {
+  position: absolute;
+  width: 280px;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: floatProduct 6s ease-in-out infinite;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12));
+}
+
+.floating-product.large {
+  width: 320px;
+}
+
+.floating-product.xlarge {
+  width: 380px;
+}
+
+.floating-product:hover {
+  transform: translateY(-12px) scale(1.03);
+  filter: drop-shadow(0 16px 40px rgba(0, 0, 0, 0.18));
+}
+
+.floating-product-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
 .product-image-wrapper {
   width: 100%;
   height: 180px;
