@@ -125,18 +125,7 @@ const HomeNew = () => {
 
   return (
     <div className="home-new-container">
-      {/* Top App Banner */}
-      <div className="top-banner">
-        <div className="banner-content">
-          <div className="banner-icon">📱</div>
-          <span>Download Mad Over AI app. Available on iOS & Android</span>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
-      </div>
-
-      {/* Left Navigation Sidebar */}
+      {/* Left Navigation Sidebar - OUTSIDE THE CARD */}
       <nav className="left-sidebar">
         <div className="sidebar-logo">
           <div className="logo-circle">O</div>
@@ -165,8 +154,21 @@ const HomeNew = () => {
         </div>
       </nav>
 
-      {/* Main Hero Section */}
-      <main className="hero-main">
+      {/* 3D ELEVATED CARD CONTAINER */}
+      <div className="main-card-container">
+        {/* Top App Banner - INSIDE CARD */}
+        <div className="top-banner">
+          <div className="banner-content">
+            <div className="banner-icon">📱</div>
+            <span>Download Mad Over AI app. Available on iOS & Android</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        </div>
+
+        {/* Main Hero Section */}
+        <main className="hero-main">
         <div className="hero-wrapper">
           {/* Floating Product Cards */}
           <div className="products-container">
