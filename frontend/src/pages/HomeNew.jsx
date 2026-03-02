@@ -136,7 +136,7 @@ const HomeNew = () => {
             <span className="sidebar-tooltip">Home</span>
           </Link>
           <Link to="/about" className="sidebar-item" data-tooltip="About Us">
-            <Users size={20} />
+            <Brain size={20} />
             <span className="sidebar-tooltip">About Us</span>
           </Link>
           <Link to="/contact" className="sidebar-item" data-tooltip="Contact Us">
