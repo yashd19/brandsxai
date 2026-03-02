@@ -202,7 +202,7 @@ const HomeNew = () => {
 
           {/* Center Content */}
           <div className="hero-center">
-            <h1 className="hero-main-title">Mad Over AI</h1>
+            <h1 className="hero-main-title">MadOver AI</h1>
             
             <div className="hero-search-wrapper">
               <input

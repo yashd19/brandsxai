@@ -230,42 +230,42 @@
 /* Hero Center Content - Clear center zone */
 .hero-center {
   position: relative;
-  z-index: 100; /* High z-index to stay above products */
+  z-index: 100;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 35px;
+  gap: 28px; /* Smaller gap between logo and search */
 }
 
-/* Garamond font with #5534eb color */
+/* Garamond font with #5534eb color - SMALLER SIZE */
 .hero-main-title {
-  font-size: 110px;
-  font-weight: 400;
+  font-size: 72px; /* Smaller to match reference ~173px width */
+  font-weight: 700; /* BOLD */
   margin: 0;
   letter-spacing: -0.01em;
   line-height: 1;
-  color: #5534eb; /* Solid purple color */
-  text-transform: lowercase;
-  font-family: 'EB Garamond', 'Garamond', serif; /* Garamond font */
-  font-style: italic; /* Slight italic like reference */
+  color: #5534eb;
+  text-transform: none; /* Keep as "MadOver AI" */
+  font-family: 'EB Garamond', 'Garamond', serif;
+  font-style: normal; /* NOT italic */
 }
 
 .hero-search-wrapper {
   position: relative;
-  width: 580px;
+  width: 522px; /* Exact width from reference */
   max-width: 90vw;
-  z-index: 101; /* Above everything */
+  z-index: 101;
 }
 
 .hero-search-input {
   width: 100%;
-  height: 64px;
+  height: 48px; /* Exact height from reference */
   background: white;
   border: none;
-  border-radius: 40px;
-  padding: 0 72px 0 32px;
-  font-size: 16px;
+  border-radius: 24px;
+  padding: 4px 60px 4px 20px; /* Adjusted padding for smaller height */
+  font-size: 14px;
   color: #1a1a1a;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   transition: all 0.3s ease;
@@ -282,11 +282,11 @@
 
 .hero-search-button {
   position: absolute;
-  right: 8px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
-  width: 48px;
-  height: 48px;
+  width: 40px; /* Smaller button */
+  height: 40px;
   background: #667eea;
   border: none;
   border-radius: 50%;
