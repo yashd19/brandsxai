@@ -140,42 +140,62 @@ async def get_status_checks():
 @api_router.post("/leads", response_model=Lead)
 async def create_lead(lead: LeadCreate):
     """Create a new lead from contact form submission"""
-    connection = get_mysql_connection()
+    if not mysql_available:
+        # Try to reconnect
+        try:
+            init_mysql_database()
+        except Exception:
+            raise HTTPException(status_code=503, detail="Database temporarily unavailable. Please try again later.")
+    
     try:
-        with connection.cursor() as cursor:
-            sql = """
-                INSERT INTO leads (name, email, company, message)
-                VALUES (%s, %s, %s, %s)
-            """
-            cursor.execute(sql, (lead.name, lead.email, lead.company, lead.message))
-            connection.commit()
-            
-            # Get the inserted lead
-            lead_id = cursor.lastrowid
-            cursor.execute("SELECT * FROM leads WHERE id = %s", (lead_id,))
-            result = cursor.fetchone()
-            
-            return Lead(**result)
+        connection = get_mysql_connection()
+        try:
+            with connection.cursor() as cursor:
+                sql = """
+                    INSERT INTO leads (name, email, company, message)
+                    VALUES (%s, %s, %s, %s)
+                """
+                cursor.execute(sql, (lead.name, lead.email, lead.company, lead.message))
+                connection.commit()
+                
+                # Get the inserted lead
+                lead_id = cursor.lastrowid
+                cursor.execute("SELECT * FROM leads WHERE id = %s", (lead_id,))
+                result = cursor.fetchone()
+                
+                return Lead(**result)
+        finally:
+            connection.close()
     except pymysql.Error as e:
         logger.error(f"MySQL error creating lead: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create lead")
-    finally:
-        connection.close()
+        raise HTTPException(status_code=500, detail="Failed to create lead. Database connection error.")
 
 @api_router.get("/leads", response_model=List[Lead])
 async def get_leads():
     """Get all leads"""
-    connection = get_mysql_connection()
+    if not mysql_available:
+        try:
+            init_mysql_database()
+        except Exception:
+            raise HTTPException(status_code=503, detail="Database temporarily unavailable.")
+    
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM leads ORDER BY created_at DESC")
-            results = cursor.fetchall()
-            return [Lead(**row) for row in results]
+        connection = get_mysql_connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM leads ORDER BY created_at DESC")
+                results = cursor.fetchall()
+                return [Lead(**row) for row in results]
+        finally:
+            connection.close()
     except pymysql.Error as e:
         logger.error(f"MySQL error fetching leads: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch leads")
-    finally:
-        connection.close()
+
+@api_router.get("/mysql-status")
+async def mysql_status():
+    """Check MySQL connection status"""
+    return {"mysql_available": mysql_available, "config_host": MYSQL_CONFIG['host'], "config_port": MYSQL_CONFIG['port']}
 
 # Include the router in the main app
 app.include_router(api_router)
