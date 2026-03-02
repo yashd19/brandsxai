@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Home as HomeIcon, Brain, Rocket, User } from 'lucide-react';
+import { Home as HomeIcon, Users, Rocket, User } from 'lucide-react';
 import './HomeNew.css';
 
 const HomeNew = () => {
