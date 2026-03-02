@@ -527,14 +527,26 @@ async def get_all_users(current_user: dict = Depends(get_current_user)):
     # MongoDB fallback
     users = []
     async for u in mongo_db.brandsxai_users.find({}, {"_id": 0, "password_hash": 0}):
-        brand = await mongo_db.brandsxai_brands.find_one({"id": u.get('brand_id')})
+        brand = None
+        if u.get('brand_id'):
+            brand = await mongo_db.brandsxai_brands.find_one({"id": u.get('brand_id')}, {"_id": 0})
         features = []
         for fid in u.get('feature_ids', []):
-            f = await mongo_db.brandsxai_features.find_one({"id": fid})
+            f = await mongo_db.brandsxai_features.find_one({"id": fid}, {"_id": 0})
             if f:
                 features.append({"id": f['id'], "name": f['name']})
-        users.append({**u, "brand": brand, "features": features})
+        users.append({
+            "id": u.get('id'),
+            "username": u.get('username'),
+            "email": u.get('email'),
+            "is_active": u.get('is_active', True),
+            "created_at": u.get('created_at'),
+            "last_login": u.get('last_login'),
+            "brand": {"id": brand['id'], "name": brand['name']} if brand else None,
+            "features": features
+        })
     
+    logger.info(f"MongoDB: Found {len(users)} users")
     return {"users": users, "db_source": "mongodb"}
 
 @api_router.put("/admin/users/{user_id}/features")

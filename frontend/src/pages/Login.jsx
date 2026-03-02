@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import './Login.css';
 
 const Login = () => {
@@ -52,6 +53,10 @@ const Login = () => {
 
   return (
     <div className="login-page">
+      <Link to="/" className="back-to-home">
+        <ArrowLeft size={20} />
+        Back to Home
+      </Link>
       <div className="login-container">
         {/* Logo */}
         <Link to="/" className="login-logo">

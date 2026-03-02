@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Shield } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Shield, ArrowLeft } from 'lucide-react';
 import './AdminLogin.css';
 
 const AdminLogin = () => {
@@ -37,6 +37,10 @@ const AdminLogin = () => {
 
   return (
     <div className="admin-login-page">
+      <Link to="/" className="back-to-home">
+        <ArrowLeft size={20} />
+        Back to Home
+      </Link>
       <div className="admin-login-container">
         <div className="admin-login-logo">
           <Shield size={48} />
