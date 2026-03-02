@@ -232,8 +232,7 @@ const HomeNew = () => {
         <div className="metrics-container">
           <div className="metrics-left">
             <h2 className="metrics-heading">
-              Millions trust <span className="metrics-highlight">MadOver AI</span> to<br />
-              deliver great value
+              Millions trust MadOver AI<br />to deliver great value
             </h2>
           </div>
           <div className="metrics-right">
