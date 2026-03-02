@@ -131,26 +131,18 @@ const HomeNew = () => {
           <div className="logo-circle">O</div>
         </div>
         <div className="sidebar-items">
-          <button className="sidebar-item active" title="Home">
+          <Link to="/" className="sidebar-item active" data-tooltip="Home">
             <HomeIcon size={20} />
-          </button>
-          <button className="sidebar-item" title="Categories">
-            <Grid size={20} />
-          </button>
-          <button className="sidebar-item" title="Cart">
-            <ShoppingCart size={20} />
-          </button>
-          <button className="sidebar-item" title="Tags">
-            <Tag size={20} />
-          </button>
-          <button className="sidebar-item" title="Favorites">
-            <Heart size={20} />
-          </button>
-        </div>
-        <div className="sidebar-bottom">
-          <button className="sidebar-item" title="Settings">
-            <div className="letter-icon">L</div>
-          </button>
+            <span className="sidebar-tooltip">Home</span>
+          </Link>
+          <Link to="/about" className="sidebar-item" data-tooltip="About Us">
+            <Info size={20} />
+            <span className="sidebar-tooltip">About Us</span>
+          </Link>
+          <Link to="/contact" className="sidebar-item" data-tooltip="Contact Us">
+            <Mail size={20} />
+            <span className="sidebar-tooltip">Contact Us</span>
+          </Link>
         </div>
       </nav>
 
