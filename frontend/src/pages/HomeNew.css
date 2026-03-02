@@ -21,6 +21,10 @@
   font-family: -apple-system, 'system-ui', 'Segoe UI', sans-serif;
 }
 
+.highlight-purple {
+  color: #5534eb;
+}
+
 .case-studies-tabs {
   display: flex;
   justify-content: center;
