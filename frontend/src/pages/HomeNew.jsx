@@ -14,92 +14,97 @@ const HomeNew = () => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // LEFT SIDE Products (pushed to left edge)
-  const leftProducts = [
+  // Product cards scattered around the page
+  const productCards = [
     {
       id: 1,
       name: 'Dream Night Serum with B...',
       image: 'https://images.unsplash.com/photo-1770732766528-d0e9fd0df233?w=400&q=80',
       rating: 5,
       reviews: '227',
-      position: { top: '15%', left: '5%' },
+      position: { top: '12%', left: '8%' },
       zIndex: 5
     },
     {
       id: 2,
       name: 'Premium Leather Bag',
-      image: 'https://images.unsplash.com/photo-1540749046540-b7d8f98c7e4c?w=500&q=80',
+      image: 'https://images.unsplash.com/photo-1772026251816-a6d382c67b3b?w=400&q=80',
       rating: 5,
       reviews: '156',
-      position: { top: '8%', left: '20%' },
+      position: { top: '8%', left: '18%' },
       zIndex: 3
     },
     {
       id: 3,
-      name: 'Organic Dark Chocolate B...',
-      image: 'https://images.unsplash.com/photo-1760307244852-190a6c5d2a5f?w=400&q=80',
+      name: 'Designer Crossbody Bag',
+      image: 'https://images.unsplash.com/photo-1540749046540-b7d8f98c7e4c?w=400&q=80',
       rating: 5,
-      reviews: '52',
-      position: { bottom: '18%', left: '5%' },
-      zIndex: 4
+      reviews: '412',
+      position: { top: '15%', left: '32%', size: 'large' },
+      zIndex: 8
     },
     {
       id: 4,
-      name: 'Coffee Mug Premium',
-      image: 'https://images.unsplash.com/photo-1548287914-44c700af2ed5?w=400&q=80',
-      rating: 4,
-      reviews: '91',
-      position: { bottom: '10%', left: '22%' },
-      zIndex: 3
-    }
-  ];
-
-  // RIGHT SIDE Products (pushed to right edge)
-  const rightProducts = [
-    {
-      id: 5,
       name: 'White Sneakers Collection',
       image: 'https://images.unsplash.com/photo-1625860191460-10a66c7384fb?w=400&q=80',
       rating: 5,
       reviews: '89',
-      position: { top: '12%', right: '20%' },
+      position: { top: '10%', right: '22%' },
       zIndex: 4
     },
     {
-      id: 6,
+      id: 5,
       name: 'Luxury Sunglasses',
       image: 'https://images.unsplash.com/photo-1760446032400-506ec8963e6a?w=400&q=80',
       rating: 5,
       reviews: '234',
-      position: { top: '20%', right: '5%' },
-      zIndex: 5
+      position: { top: '18%', right: '8%' },
+      zIndex: 6
     },
     {
-      id: 7,
+      id: 6,
       name: 'Cookware Set',
       image: 'https://images.unsplash.com/photo-1584990347163-2b86b71390d6?w=400&q=80',
       rating: 5,
       reviews: '38.5k',
-      position: { top: '5%', right: '2%' },
+      position: { top: '12%', right: '2%' },
       zIndex: 3
     },
     {
-      id: 8,
-      name: 'Designer Bag',
-      image: 'https://images.unsplash.com/photo-1772026251816-a6d382c67b3b?w=400&q=80',
+      id: 7,
+      name: 'Organic Dark Chocolate B...',
+      image: 'https://images.unsplash.com/photo-1760307244852-190a6c5d2a5f?w=400&q=80',
       rating: 5,
-      reviews: '178',
-      position: { bottom: '15%', right: '22%' },
+      reviews: '52',
+      position: { bottom: '22%', left: '12%' },
+      zIndex: 7
+    },
+    {
+      id: 8,
+      name: 'Coffee Mug Premium',
+      image: 'https://images.unsplash.com/photo-1548287914-44c700af2ed5?w=400&q=80',
+      rating: 4,
+      reviews: '91',
+      position: { bottom: '18%', left: '32%' },
       zIndex: 4
     },
     {
       id: 9,
+      name: 'Gourmet Collection',
+      image: 'https://images.unsplash.com/photo-1685384338018-1774719d5b69?w=400&q=80',
+      rating: 5,
+      reviews: '178',
+      position: { bottom: '12%', right: '28%' },
+      zIndex: 5
+    },
+    {
+      id: 10,
       name: 'Terry Stripe Slippers (Bone...',
       image: 'https://images.unsplash.com/photo-1656335362192-2bc9051b1824?w=400&q=80',
       rating: 4,
       reviews: '2',
-      position: { bottom: '12%', right: '5%' },
-      zIndex: 5
+      position: { bottom: '16%', right: '6%' },
+      zIndex: 6
     }
   ];
 
@@ -152,44 +157,17 @@ const HomeNew = () => {
       {/* Main Hero Section */}
       <main className="hero-main">
         <div className="hero-wrapper">
-          {/* LEFT SIDE - Product Cards */}
-          <div className="products-left">
-            {leftProducts.map((product, index) => (
+          {/* Floating Product Cards */}
+          <div className="products-container">
+            {productCards.map((product, index) => (
               <div
                 key={product.id}
-                className="product-card"
+                className={`product-card ${product.size || ''}`}
                 style={{
                   ...product.position,
                   zIndex: product.zIndex,
-                  transform: `translate(${mousePosition.x * 0.005}px, ${mousePosition.y * 0.005}px)`,
-                  animationDelay: `${index * 0.2}s`
-                }}
-              >
-                <div className="product-image-wrapper">
-                  <img src={product.image} alt={product.name} className="product-image" />
-                </div>
-                <div className="product-info">
-                  <h3 className="product-name">{product.name}</h3>
-                  <div className="product-rating">
-                    <span className="stars">{renderStars(product.rating)}</span>
-                    <span className="reviews">({product.reviews})</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* RIGHT SIDE - Product Cards */}
-          <div className="products-right">
-            {rightProducts.map((product, index) => (
-              <div
-                key={product.id}
-                className="product-card"
-                style={{
-                  ...product.position,
-                  zIndex: product.zIndex,
-                  transform: `translate(${mousePosition.x * -0.005}px, ${mousePosition.y * 0.005}px)`,
-                  animationDelay: `${index * 0.2}s`
+                  transform: `translate(${mousePosition.x * 0.008 * (index % 2 === 0 ? 1 : -1)}px, ${mousePosition.y * 0.008 * (index % 3 === 0 ? 1 : -1)}px)`,
+                  animationDelay: `${index * 0.15}s`
                 }}
               >
                 <div className="product-image-wrapper">
