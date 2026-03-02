@@ -73,6 +73,21 @@ class StatusCheck(BaseModel):
 class StatusCheckCreate(BaseModel):
     client_name: str
 
+# Lead Models for MySQL
+class LeadCreate(BaseModel):
+    name: str
+    email: EmailStr
+    company: Optional[str] = None
+    message: Optional[str] = None
+
+class Lead(BaseModel):
+    id: int
+    name: str
+    email: str
+    company: Optional[str] = None
+    message: Optional[str] = None
+    created_at: datetime
+
 # Add your routes to the router instead of directly to app
 @api_router.get("/")
 async def root():
