@@ -274,8 +274,8 @@ const HomeNew = () => {
 
           <div className="case-study-card">
             <img 
-              src="https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=1200&q=80" 
-              alt="City skyline with network connections" 
+              src="https://images.unsplash.com/photo-1519501025264-65ba15a82390?w=1200&q=80" 
+              alt="City skyline at night with network connections" 
               className="case-study-bg-image"
             />
             <div className="case-study-content-card">
