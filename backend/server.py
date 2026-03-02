@@ -28,6 +28,9 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# Flag to use MongoDB as fallback when MySQL is unavailable
+USE_MONGODB_FALLBACK = True
+
 # MySQL connection configuration with connection pooling settings
 MYSQL_CONFIG = {
     'host': os.environ.get('MYSQL_HOST', 'madoverai.cdam6io6a2o3.eu-north-1.rds.amazonaws.com'),
