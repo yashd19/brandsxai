@@ -14,7 +14,7 @@ const HomeNew = () => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // Smaller product cards positioned AROUND the center (not overlapping)
+  // Smaller product cards - REDUCED & OPTIMIZED
   const productCards = [
     // TOP LEFT AREA
     {
@@ -44,7 +44,7 @@ const HomeNew = () => {
       rating: 5,
       reviews: '89',
       position: { top: '8%', right: '6%' },
-      zIndex: 4
+      zIndex: 5 // Higher z-index
     },
     {
       id: 4,
@@ -55,44 +55,15 @@ const HomeNew = () => {
       position: { top: '4%', right: '22%' },
       zIndex: 6
     },
-    {
-      id: 5,
-      name: 'Cookware Set',
-      image: 'https://images.unsplash.com/photo-1584990347163-2b86b71390d6?w=400&q=80',
-      rating: 5,
-      reviews: '38.5k',
-      position: { top: '22%', right: '2%' },
-      zIndex: 3
-    },
     
-    // MIDDLE LEFT & RIGHT (beside the text)
-    {
-      id: 6,
-      name: 'Designer Crossbody Bag',
-      image: 'https://images.unsplash.com/photo-1540749046540-b7d8f98c7e4c?w=400&q=80',
-      rating: 5,
-      reviews: '412',
-      position: { top: '32%', left: '4%' },
-      zIndex: 8
-    },
-    {
-      id: 7,
-      name: 'Coffee Mug Premium',
-      image: 'https://images.unsplash.com/photo-1548287914-44c700af2ed5?w=400&q=80',
-      rating: 4,
-      reviews: '91',
-      position: { top: '35%', right: '4%' },
-      zIndex: 4
-    },
-    
-    // BOTTOM AREA
+    // BOTTOM AREA - MOVED LOWER
     {
       id: 8,
       name: 'Organic Dark Chocolate B...',
       image: 'https://images.unsplash.com/photo-1760307244852-190a6c5d2a5f?w=400&q=80',
       rating: 5,
       reviews: '52',
-      position: { bottom: '18%', left: '8%' },
+      position: { bottom: '12%', left: '8%' }, // Moved lower
       zIndex: 7
     },
     {
@@ -101,7 +72,7 @@ const HomeNew = () => {
       image: 'https://images.unsplash.com/photo-1685384338018-1774719d5b69?w=400&q=80',
       rating: 5,
       reviews: '178',
-      position: { bottom: '14%', left: '26%' },
+      position: { bottom: '8%', left: '26%' }, // Moved lower
       zIndex: 5
     },
     {
@@ -110,7 +81,7 @@ const HomeNew = () => {
       image: 'https://images.unsplash.com/photo-1656335362192-2bc9051b1824?w=400&q=80',
       rating: 4,
       reviews: '2',
-      position: { bottom: '18%', right: '8%' },
+      position: { bottom: '12%', right: '8%' }, // Moved lower
       zIndex: 6
     },
     {
@@ -119,7 +90,7 @@ const HomeNew = () => {
       image: 'https://images.unsplash.com/photo-1540749046540-b7d8f98c7e4c?w=400&q=80',
       rating: 5,
       reviews: '324',
-      position: { bottom: '14%', right: '26%' },
+      position: { bottom: '8%', right: '26%' }, // Moved lower
       zIndex: 4
     }
   ];

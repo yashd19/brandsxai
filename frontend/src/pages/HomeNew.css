@@ -147,10 +147,10 @@
 .product-card {
   position: absolute;
   background: white;
-  border-radius: 18px;
-  padding: 10px; /* ~9.5px padding as in reference */
+  border-radius: 16px;
+  padding: 9px; /* Smaller padding */
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
-  width: 150px; /* EXACT width from reference */
+  width: 135px; /* EVEN SMALLER - reduced further */
   cursor: pointer;
   pointer-events: auto;
   animation: floatProduct 6s ease-in-out infinite;
@@ -158,7 +158,7 @@
 }
 
 .product-card.large {
-  width: 165px;
+  width: 150px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
@@ -178,11 +178,11 @@
 
 .product-image-wrapper {
   width: 100%;
-  height: 120px; /* Adjusted for proper proportion */
+  height: 110px; /* Smaller height for smaller cards */
   background: #f8f8f8;
   border-radius: 10px;
   overflow: hidden;
-  margin-bottom: 8px;
+  margin-bottom: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
