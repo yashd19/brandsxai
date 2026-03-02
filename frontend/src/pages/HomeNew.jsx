@@ -342,106 +342,15 @@ const HomeNew = () => {
         </div>
       </section>
 
-      {/* Contact Form Section */}
-      <section className="contact-section">
-        <div className="contact-container">
-          <div className="contact-left">
-            <h2 className="contact-heading">Get Started with AI</h2>
-            <p className="contact-subheading">Let's transform your brand together. Fill out the form and we'll get back to you within 24 hours.</p>
-            <div className="contact-info">
-              <div className="contact-info-item">
-                <span className="contact-icon">📧</span>
-                <span>contact@madoverai.com</span>
-              </div>
-              <div className="contact-info-item">
-                <span className="contact-icon">📍</span>
-                <span>Global Presence</span>
-              </div>
-            </div>
-          </div>
-          <div className="contact-right">
-            <form className="contact-form" onSubmit={handleSubmit}>
-              <div className="form-row">
-                <input
-                  type="text"
-                  name="name"
-                  placeholder="Your Name *"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                  className="form-input"
-                  data-testid="contact-name-input"
-                />
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="Email Address *"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  required
-                  className="form-input"
-                  data-testid="contact-email-input"
-                />
-              </div>
-              <input
-                type="text"
-                name="company"
-                placeholder="Company Name"
-                value={formData.company}
-                onChange={handleInputChange}
-                className="form-input"
-                data-testid="contact-company-input"
-              />
-              <textarea
-                name="message"
-                placeholder="Tell us about your AI needs..."
-                value={formData.message}
-                onChange={handleInputChange}
-                className="form-textarea"
-                rows={4}
-                data-testid="contact-message-input"
-              />
-              <button 
-                type="submit" 
-                className="form-submit-btn"
-                disabled={formStatus.loading}
-                data-testid="contact-submit-btn"
-              >
-                {formStatus.loading ? (
-                  <>
-                    <Loader2 className="spin-icon" size={18} />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send size={18} />
-                    Send Message
-                  </>
-                )}
-              </button>
-              {formStatus.success && (
-                <div className="form-success" data-testid="contact-success-message">
-                  Thank you! We'll be in touch soon.
-                </div>
-              )}
-              {formStatus.error && (
-                <div className="form-error" data-testid="contact-error-message">
-                  {formStatus.error}
-                </div>
-              )}
-            </form>
-          </div>
-        </div>
-      </section>
-
       {/* Bottom Footer */}
       <footer className="hero-footer">
         <div className="footer-left">
-          <div className="footer-logo-icon">M</div>
-          <span className="footer-logo-text">MadOver AI</span>
+          <div className="footer-logo-icon">shop</div>
+          <span className="footer-logo-text">Shop</span>
         </div>
         <div className="footer-right">
-          <span className="footer-copyright">© 2026 MadOver AI. All rights reserved.</span>
+          <span className="curated-text">curated by</span>
+          <span className="mobbin-logo">Mobbin</span>
         </div>
       </footer>
     </div>
