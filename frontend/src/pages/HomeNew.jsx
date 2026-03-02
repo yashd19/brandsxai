@@ -224,6 +224,37 @@ const HomeNew = () => {
         </div>
       </main>
 
+      {/* Metrics Section */}
+      <section className="metrics-section">
+        <div className="metrics-background">AI</div>
+        <div className="metrics-container">
+          <div className="metrics-left">
+            <h2 className="metrics-heading">
+              Millions trust Servity to<br />
+              deliver great value
+            </h2>
+          </div>
+          <div className="metrics-right">
+            <div className="metric-item">
+              <div className="metric-number">75+</div>
+              <div className="metric-label">Brand Customers</div>
+            </div>
+            <div className="metric-item">
+              <div className="metric-number">200k+</div>
+              <div className="metric-label">Resellers</div>
+            </div>
+            <div className="metric-item">
+              <div className="metric-number">18k+</div>
+              <div className="metric-label">Service Locations</div>
+            </div>
+            <div className="metric-item">
+              <div className="metric-number">40+</div>
+              <div className="metric-label">Countries</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Bottom Footer */}
       <footer className="hero-footer">
         <div className="footer-left">
