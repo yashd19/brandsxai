@@ -314,7 +314,7 @@ const HomeNew = () => {
               <h4 className="footer-column-title">Information</h4>
               <a href="#" className="footer-link">Solutions</a>
               <a href="#" className="footer-link">Help center</a>
-              <a href="#" className="footer-link">For brands</a>
+              <Link to="/contact" className="footer-link">For brands</Link>
             </div>
             
             <div className="footer-column">
