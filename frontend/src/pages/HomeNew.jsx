@@ -262,10 +262,12 @@ const HomeNew = () => {
       {/* Case Studies Section */}
       <section className="case-studies-section">
         <div className="case-studies-container">
+          <h2 className="case-studies-heading">Supercharge your<br/>business with Servify</h2>
+          
           <div className="case-studies-tabs">
-            <button className="tab-button">OEM</button>
+            <button className="tab-button active">OEM</button>
             <button className="tab-button">Carriers & MVNOs</button>
-            <button className="tab-button active">ISPs & BSPs</button>
+            <button className="tab-button">ISPs & BSPs</button>
             <button className="tab-button">Home Warranty</button>
             <button className="tab-button">Retail</button>
           </div>
@@ -291,27 +293,6 @@ const HomeNew = () => {
                 By introducing whole home consumer electronics protection plans
               </p>
               <Link to="/case-study/revenue-churn" className="learn-more-button">
-                Learn More →
-              </Link>
-            </div>
-          </div>
-
-          <div className="case-study-card" style={{marginTop: '2rem'}}>
-            <div className="case-study-image">
-              <img 
-                src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&q=80" 
-                alt="Warehouse" 
-                className="case-study-bg-image"
-              />
-            </div>
-            <div className="case-study-content-card">
-              <h2 className="case-study-title">
-                Enable your brand to build your own 'BrandCare'
-              </h2>
-              <p className="case-study-description">
-                By providing your customers with superior, turn-key Product Protection Offerings and Affordability programs
-              </p>
-              <Link to="/case-study/brandcare" className="learn-more-button">
                 Learn More →
               </Link>
             </div>
