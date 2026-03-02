@@ -1,14 +1,15 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
+import pymysql
 
 
 ROOT_DIR = Path(__file__).parent
@@ -18,6 +19,41 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# MySQL connection configuration
+MYSQL_CONFIG = {
+    'host': os.environ.get('MYSQL_HOST', 'madoverai.cdam6io6a2o3.eu-north-1.rds.amazonaws.com'),
+    'port': int(os.environ.get('MYSQL_PORT', 13306)),
+    'user': os.environ.get('MYSQL_USER', 'admin'),
+    'password': os.environ.get('MYSQL_PASSWORD', 'm94IHMwmhb1SHItnl3zP'),
+    'database': os.environ.get('MYSQL_DATABASE', 'madoverai'),
+    'charset': 'utf8mb4',
+    'cursorclass': pymysql.cursors.DictCursor
+}
+
+def get_mysql_connection():
+    """Get MySQL database connection"""
+    return pymysql.connect(**MYSQL_CONFIG)
+
+def init_mysql_database():
+    """Initialize MySQL database with required tables"""
+    connection = get_mysql_connection()
+    try:
+        with connection.cursor() as cursor:
+            # Create leads table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS leads (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    company VARCHAR(255),
+                    message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            connection.commit()
+    finally:
+        connection.close()
 
 # Create the main app without a prefix
 app = FastAPI()
