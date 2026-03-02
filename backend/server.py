@@ -117,6 +117,47 @@ async def get_status_checks():
     
     return status_checks
 
+# Lead endpoints (MySQL)
+@api_router.post("/leads", response_model=Lead)
+async def create_lead(lead: LeadCreate):
+    """Create a new lead from contact form submission"""
+    connection = get_mysql_connection()
+    try:
+        with connection.cursor() as cursor:
+            sql = """
+                INSERT INTO leads (name, email, company, message)
+                VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(sql, (lead.name, lead.email, lead.company, lead.message))
+            connection.commit()
+            
+            # Get the inserted lead
+            lead_id = cursor.lastrowid
+            cursor.execute("SELECT * FROM leads WHERE id = %s", (lead_id,))
+            result = cursor.fetchone()
+            
+            return Lead(**result)
+    except pymysql.Error as e:
+        logger.error(f"MySQL error creating lead: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create lead")
+    finally:
+        connection.close()
+
+@api_router.get("/leads", response_model=List[Lead])
+async def get_leads():
+    """Get all leads"""
+    connection = get_mysql_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM leads ORDER BY created_at DESC")
+            results = cursor.fetchall()
+            return [Lead(**row) for row in results]
+    except pymysql.Error as e:
+        logger.error(f"MySQL error fetching leads: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch leads")
+    finally:
+        connection.close()
+
 # Include the router in the main app
 app.include_router(api_router)
 
