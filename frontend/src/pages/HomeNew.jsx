@@ -293,15 +293,48 @@ const HomeNew = () => {
         </div>
       </section>
 
-      {/* Bottom Footer */}
-      <footer className="hero-footer">
-        <div className="footer-left">
-          <div className="footer-logo-icon">shop</div>
-          <span className="footer-logo-text">Shop</span>
+      {/* Footer Section */}
+      <footer className="site-footer">
+        <div className="footer-main">
+          <div className="footer-brand">
+            <h3 className="footer-logo">MadOver AI</h3>
+            <p className="footer-tagline">MadOver AI is the next step on our mission to make AI better for everyone.</p>
+            <div className="footer-apps">
+              <a href="#" className="app-badge">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/3/3c/Download_on_the_App_Store_Badge.svg" alt="Download on App Store" />
+              </a>
+              <a href="#" className="app-badge">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg" alt="Get it on Google Play" />
+              </a>
+            </div>
+          </div>
+          
+          <div className="footer-links-section">
+            <div className="footer-column">
+              <h4 className="footer-column-title">Information</h4>
+              <a href="#" className="footer-link">Solutions</a>
+              <a href="#" className="footer-link">Help center</a>
+              <a href="#" className="footer-link">For brands</a>
+            </div>
+            
+            <div className="footer-column">
+              <h4 className="footer-column-title">Social</h4>
+              <a href="#" className="footer-link">X (Twitter)</a>
+              <a href="#" className="footer-link">Instagram</a>
+              <a href="#" className="footer-link">LinkedIn</a>
+            </div>
+            
+            <div className="footer-column">
+              <h4 className="footer-column-title">Legal</h4>
+              <a href="#" className="footer-link">Terms of Service</a>
+              <a href="#" className="footer-link">Privacy Policy</a>
+            </div>
+          </div>
         </div>
-        <div className="footer-right">
-          <span className="curated-text">curated by</span>
-          <span className="mobbin-logo">Mobbin</span>
+        
+        <div className="footer-bottom">
+          <span className="footer-powered">Powered by <strong>MadOver AI</strong></span>
+          <span className="footer-copyright">© MadOver AI Inc. 2026</span>
         </div>
       </footer>
     </div>
