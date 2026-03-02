@@ -136,7 +136,7 @@ const HomeNew = () => {
             <span className="sidebar-tooltip">Home</span>
           </Link>
           <Link to="/about" className="sidebar-item" data-tooltip="About Us">
-            <Brain size={20} />
+            <Users size={20} />
             <span className="sidebar-tooltip">About Us</span>
           </Link>
           <Link to="/contact" className="sidebar-item" data-tooltip="Contact Us">
@@ -145,9 +145,9 @@ const HomeNew = () => {
           </Link>
         </div>
         <div className="sidebar-bottom">
-          <Link to="/contact" className="sidebar-item" data-tooltip="Sign In">
-            <User size={20} />
-            <span className="sidebar-tooltip">Sign In</span>
+          <Link to="/contact" className="sidebar-signin">
+            <User size={18} />
+            <span className="signin-text">sign in</span>
           </Link>
         </div>
       </nav>
