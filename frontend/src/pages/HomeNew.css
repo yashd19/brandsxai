@@ -1,10 +1,11 @@
-/* Main Container */
+/* Main Container - Enable scrolling */
 .home-new-container {
   width: 100vw;
-  height: 100vh;
+  min-height: 100vh; /* Changed from height to min-height */
   background: #FAFAFA;
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden; /* Hide horizontal scroll only */
+  overflow-y: auto; /* Enable vertical scroll */
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
 }
 
@@ -120,10 +121,10 @@
   color: inherit;
 }
 
-/* Hero Main Section */
+/* Hero Main Section - Allow scrolling */
 .hero-main {
   width: 100%;
-  height: 100vh;
+  min-height: 100vh; /* Changed from height to min-height */
   padding: 80px 100px 100px 120px;
   position: relative;
 }
@@ -332,14 +333,15 @@
   border-radius: 4px;
 }
 
-/* Metrics Section */
+/* Metrics Section - Properly positioned after hero */
 .metrics-section {
   position: relative;
   width: 100%;
   background: #0f0f0f;
   padding: 6rem 4rem;
   overflow: hidden;
-  z-index: 50; /* Below footer but above hero */
+  z-index: 1; /* Below fixed elements */
+  margin-bottom: 80px; /* Space for fixed footer */
 }
 
 .metrics-background {
