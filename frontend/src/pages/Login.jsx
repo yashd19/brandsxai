@@ -28,11 +28,12 @@ const Login = () => {
         body: JSON.stringify(formData),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.detail || 'Invalid username or password');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Invalid username or password');
       }
+
+      const data = await response.json();
 
       // Store token and user data in localStorage
       localStorage.setItem('token', data.access_token);

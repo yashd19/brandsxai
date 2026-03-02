@@ -21,17 +21,16 @@ const AdminLogin = () => {
         body: JSON.stringify(formData)
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.detail || 'Invalid credentials');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Invalid credentials');
       }
 
+      const data = await response.json();
       localStorage.setItem('admin_token', data.access_token);
       navigate('/admin/portal');
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
