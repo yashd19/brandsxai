@@ -5,6 +5,13 @@ import './HomeNew.css';
 
 const HomeNew = () => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    company: '',
+    message: ''
+  });
+  const [formStatus, setFormStatus] = useState({ loading: false, success: false, error: '' });
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -13,6 +20,41 @@ const HomeNew = () => {
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setFormStatus({ loading: true, success: false, error: '' });
+
+    try {
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/leads`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to submit form');
+      }
+
+      setFormStatus({ loading: false, success: true, error: '' });
+      setFormData({ name: '', email: '', company: '', message: '' });
+      
+      // Reset success message after 5 seconds
+      setTimeout(() => {
+        setFormStatus(prev => ({ ...prev, success: false }));
+      }, 5000);
+    } catch (error) {
+      setFormStatus({ loading: false, success: false, error: error.message });
+    }
+  };
 
   // Product cards SURROUNDING MadOver AI from all sides
   const productCards = [
