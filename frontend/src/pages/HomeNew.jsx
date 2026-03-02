@@ -232,7 +232,7 @@ const HomeNew = () => {
         <div className="metrics-container">
           <div className="metrics-left">
             <h2 className="metrics-heading">
-              Millions trust Servity to<br />
+              Millions trust <span className="metrics-highlight">MadOver AI</span> to<br />
               deliver great value
             </h2>
           </div>
