@@ -8,6 +8,9 @@
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
 }
 
+/* Import Garamond font */
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap');
+
 /* Top App Banner */
 .top-banner {
   position: fixed;
@@ -144,10 +147,10 @@
 .product-card {
   position: absolute;
   background: white;
-  border-radius: 20px;
-  padding: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-  width: 220px;
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+  width: 170px; /* SMALLER SIZE */
   cursor: pointer;
   pointer-events: auto;
   animation: floatProduct 6s ease-in-out infinite;
@@ -155,8 +158,8 @@
 }
 
 .product-card.large {
-  width: 260px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  width: 190px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 @keyframes floatProduct {
@@ -175,11 +178,11 @@
 
 .product-image-wrapper {
   width: 100%;
-  height: 180px;
+  height: 140px; /* SMALLER HEIGHT */
   background: #f8f8f8;
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -196,10 +199,10 @@
 }
 
 .product-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #1a1a1a;
-  margin: 0 0 6px 0;
+  margin: 0 0 5px 0;
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -209,49 +212,50 @@
 .product-rating {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
+  gap: 3px;
+  font-size: 11px;
 }
 
 .stars {
   color: #FFD700;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 1px;
 }
 
 .reviews {
   color: #999;
-  font-size: 11px;
+  font-size: 10px;
 }
 
-/* Hero Center Content */
+/* Hero Center Content - Clear center zone */
 .hero-center {
   position: relative;
-  z-index: 10;
+  z-index: 100; /* High z-index to stay above products */
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 40px;
+  gap: 35px;
 }
 
+/* Garamond font with #5534eb color */
 .hero-main-title {
-  font-size: 120px;
-  font-weight: 700;
+  font-size: 110px;
+  font-weight: 400;
   margin: 0;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   line-height: 1;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #5534eb; /* Solid purple color */
   text-transform: lowercase;
+  font-family: 'EB Garamond', 'Garamond', serif; /* Garamond font */
+  font-style: italic; /* Slight italic like reference */
 }
 
 .hero-search-wrapper {
   position: relative;
-  width: 600px;
+  width: 580px;
   max-width: 90vw;
+  z-index: 101; /* Above everything */
 }
 
 .hero-search-input {
