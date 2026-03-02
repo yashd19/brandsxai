@@ -92,62 +92,7 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
-.case-study-image {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.case-study-bg-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.tech-icons {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-.icon-circle {
-  position: absolute;
-  width: 80px;
-  height: 80px;
-  background: rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(8px);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2rem;
-  border: 2px dashed rgba(255, 255, 255, 0.5);
-  animation: float 3s ease-in-out infinite;
-}
-
-.connecting-lines {
-  position: absolute;
-  inset: 0;
-  background-image: 
-    radial-gradient(circle, rgba(255,255,255,0.3) 2px, transparent 2px),
-    radial-gradient(circle, rgba(255,255,255,0.2) 1px, transparent 1px);
-  background-size: 50px 50px, 25px 25px;
-  opacity: 0.5;
-}
-
-.case-study-content-card {
-  background: #D4E8F0;
-  padding: 4rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  position: relative;
-  transition: background 0.3s ease;
-}
-
-.case-study-title {
+/* Empty placeholder */.case-study-title {
   font-size: 2rem;
   font-weight: 700;
   color: #333;
