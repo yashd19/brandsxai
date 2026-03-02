@@ -32,7 +32,7 @@
 }
 
 .tab-button {
-  padding: 0.875rem 1.75rem;
+  padding: 1rem 2rem;
   background: transparent;
   border: none;
   border-radius: 50px;
@@ -46,12 +46,12 @@
 }
 
 .tab-button:hover {
-  background: #E8EDF2;
+  background: #E8EDF5;
   color: #333;
 }
 
 .tab-button.active {
-  background: #D4DEE8;
+  background: #D8E4ED;
   color: #1a1a1a;
   font-weight: 600;
 }
