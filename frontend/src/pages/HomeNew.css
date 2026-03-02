@@ -188,20 +188,33 @@
 /* Responsive Case Studies */
 @media (max-width: 1024px) {
   .case-study-card {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
-
-  .case-study-image {
-    height: 300px;
+    height: 380px;
   }
 
   .case-study-content-card {
-    padding: 3rem 2rem;
+    width: 380px;
+    right: 24px;
+    padding: 32px;
   }
 
   .case-study-title {
-    font-size: 2rem;
+    font-size: 1.75rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .case-study-card {
+    height: auto;
+    min-height: 500px;
+  }
+
+  .case-study-content-card {
+    position: relative;
+    width: calc(100% - 32px);
+    right: auto;
+    top: auto;
+    transform: none;
+    margin: 200px 16px 24px;
   }
 }
 
@@ -216,15 +229,16 @@
   }
 
   .case-study-content-card {
-    padding: 2rem 1.5rem;
+    padding: 24px;
+    margin-top: 150px;
   }
 
   .case-study-title {
-    font-size: 1.75rem;
+    font-size: 1.5rem;
   }
 
   .case-study-description {
-    font-size: 1rem;
+    font-size: 0.9375rem;
   }
 }
 
