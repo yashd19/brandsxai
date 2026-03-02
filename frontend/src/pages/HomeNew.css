@@ -59,10 +59,10 @@
 .case-study-card {
   position: relative;
   width: 100%;
-  max-width: 1080px;
-  height: 448px;
+  max-width: 960px;
+  height: 380px;
   margin: 0 auto;
-  border-radius: 24px;
+  border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
@@ -81,13 +81,13 @@
 
 .case-study-content-card {
   position: absolute;
-  right: 48px;
+  right: 40px;
   top: 50%;
   transform: translateY(-50%);
-  width: 446px;
+  width: 380px;
   background: #FFFFFF;
-  border-radius: 16px;
-  padding: 40px;
+  border-radius: 14px;
+  padding: 32px;
   z-index: 10;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
