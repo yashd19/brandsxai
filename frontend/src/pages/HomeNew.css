@@ -121,10 +121,10 @@
   color: inherit;
 }
 
-/* Hero Main Section - Allow scrolling */
+/* Hero Main Section - RESTORED */
 .hero-main {
   width: 100%;
-  min-height: 100vh; /* Changed from height to min-height */
+  height: 100vh;
   padding: 80px 100px 100px 120px;
   position: relative;
 }
@@ -333,85 +333,80 @@
   border-radius: 4px;
 }
 
-/* Metrics Section - Properly positioned after hero */
+/* Metrics Section - EXACT SPECS FROM REFERENCE */
 .metrics-section {
   position: relative;
   width: 100%;
   background: #0f0f0f;
-  padding: 6rem 4rem;
+  padding: 5rem 4rem;
   overflow: hidden;
-  z-index: 1; /* Below fixed elements */
-  margin-bottom: 80px; /* Space for fixed footer */
+  z-index: 1;
+  margin-bottom: 80px;
 }
 
 .metrics-background {
-  position: absolute;
-  top: 50%;
-  right: 10%;
-  transform: translateY(-50%);
-  font-size: 35rem;
-  font-weight: 900;
-  color: transparent;
-  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.03);
-  font-family: 'Courier New', monospace;
-  letter-spacing: -0.05em;
-  z-index: 1;
-  pointer-events: none;
+  display: none; /* Remove AI watermark */
 }
 
 .metrics-container {
   position: relative;
   z-index: 2;
-  max-width: 1400px;
+  max-width: 1154px; /* Exact container width from spec */
+  height: 320px; /* Exact height from spec */
   margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4rem;
+  gap: 3rem;
 }
 
 .metrics-left {
-  flex: 1;
-  max-width: 500px;
+  flex: 0 0 auto;
+  max-width: 450px;
 }
 
 .metrics-heading {
-  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  font-size: 36px; /* Exact from spec */
   font-weight: 400;
-  color: white;
-  line-height: 1.2;
+  color: #FCFCFE; /* Exact color from spec */
+  line-height: 1.3;
   margin: 0;
-  font-family: 'EB Garamond', 'Garamond', serif;
-  letter-spacing: -0.02em;
+  font-family: 'Inter', -apple-system, 'system-ui', 'Segoe UI', sans-serif;
+  letter-spacing: -0.01em;
 }
 
 .metrics-right {
   flex: 1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 3rem;
+  gap: 2rem;
+  max-width: 654px; /* Exact width from spec */
+  height: 256px; /* Exact height from spec */
 }
 
 .metric-item {
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .metric-number {
-  font-size: clamp(3rem, 5vw, 5rem);
+  font-size: 48px; /* Exact from spec */
   font-weight: 700;
-  color: #39ff14; /* Bright neon green */
-  margin-bottom: 1rem;
+  color: #FCFCFE; /* Exact color from spec */
+  margin-bottom: 0.5rem;
   line-height: 1;
-  font-family: 'EB Garamond', 'Garamond', serif;
-  text-shadow: 0 0 20px rgba(57, 255, 20, 0.5);
+  font-family: 'Inter', sans-serif;
 }
 
 .metric-label {
-  font-size: 1.125rem;
-  color: white;
-  font-weight: 300;
+  font-size: 16px; /* From first image spec */
+  color: #333333; /* Exact from spec */
+  font-weight: 400;
   line-height: 1.4;
-  font-family: 'EB Garamond', 'Garamond', serif;
+  font-family: -apple-system, 'system-ui', 'Segoe UI', sans-serif;
 }
 
 /* Responsive Metrics */
