@@ -1,8 +1,8 @@
-/* Main Container - Soft Gray Background */
+/* Main Container */
 .home-new-container {
   width: 100vw;
   height: 100vh;
-  background: #F8FAFC; /* Soft gray-white */
+  background: #FAFAFA;
   position: relative;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
@@ -11,14 +11,14 @@
 /* Import Garamond font */
 @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap');
 
-/* Top App Banner - Slate Dark */
+/* Top App Banner */
 .top-banner {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   height: 56px;
-  background: #1E293B; /* Slate dark */
+  background: #1a1a1a;
   color: white;
   display: flex;
   align-items: center;
@@ -63,7 +63,7 @@
 .logo-circle {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); /* Royal purple gradient */
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -71,7 +71,6 @@
   color: white;
   font-weight: 700;
   font-size: 18px;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .sidebar-items {
@@ -111,7 +110,7 @@
 }
 
 .sidebar-item.active {
-  background: #6366F1; /* Royal purple */
+  background: #1a1a1a;
   color: white;
 }
 
@@ -289,7 +288,7 @@
   transform: translateY(-50%);
   width: 40px;
   height: 40px;
-  background: #0EA5E9; /* Electric Cyan Blue */
+  background: #667eea;
   border: none;
   border-radius: 50%;
   display: flex;
@@ -297,13 +296,11 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
 }
 
 .hero-search-button:hover {
-  background: #0284C7;
+  background: #764ba2;
   transform: translateY(-50%) scale(1.05);
-  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
 }
 
 .hero-search-button:active {
@@ -335,14 +332,14 @@
   border-radius: 4px;
 }
 
-/* Bottom Footer - Slate Dark */
+/* Bottom Footer */
 .hero-footer {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   height: 80px;
-  background: #1E293B;
+  background: #1a1a1a;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -359,7 +356,7 @@
 .footer-logo-icon {
   width: 44px;
   height: 44px;
-  background: linear-gradient(135deg, #0EA5E9 0%, #06B6D4 100%); /* Cyan gradient */
+  background: #667eea;
   border-radius: 12px;
   display: flex;
   align-items: center;
