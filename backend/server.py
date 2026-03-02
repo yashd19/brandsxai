@@ -178,9 +178,10 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database on startup"""
+    """Initialize databases on startup"""
     try:
-        init_database()
-        logger.info("Database initialized successfully")
+        # Initialize MySQL tables
+        init_mysql_database()
+        logger.info("MySQL database initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {str(e)}")
+        logger.error(f"Failed to initialize MySQL database: {str(e)}")
