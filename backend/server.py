@@ -318,23 +318,40 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     if not current_user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
-    try:
-        connection = get_mysql_connection()
+    # Try MySQL first
+    if mysql_available:
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT id, username, email, is_active FROM brandsxai_users WHERE id = %s",
-                    (current_user['sub'],)
-                )
-                user = cursor.fetchone()
-                if not user:
-                    raise HTTPException(status_code=404, detail="User not found")
-                return UserResponse(**user)
-        finally:
-            connection.close()
-    except pymysql.Error as e:
-        logger.error(f"MySQL error fetching user: {e}")
-        raise HTTPException(status_code=500, detail="Database error")
+            connection = get_mysql_connection()
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT id, username, email, is_active FROM brandsxai_users WHERE id = %s",
+                        (current_user['sub'],)
+                    )
+                    user = cursor.fetchone()
+                    if not user:
+                        raise HTTPException(status_code=404, detail="User not found")
+                    return UserResponse(**user)
+            finally:
+                connection.close()
+        except pymysql.Error as e:
+            logger.error(f"MySQL error fetching user: {e}")
+            if not USE_MONGODB_FALLBACK:
+                raise HTTPException(status_code=500, detail="Database error")
+    
+    # MongoDB fallback
+    if USE_MONGODB_FALLBACK:
+        user = await db.brandsxai_users.find_one({"username": current_user['username']})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return UserResponse(
+            id=user.get('id', 1),
+            username=user['username'],
+            email=user.get('email', ''),
+            is_active=user.get('is_active', True)
+        )
+    
+    raise HTTPException(status_code=500, detail="Database error")
 
 # Basic Routes
 @api_router.get("/")
