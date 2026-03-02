@@ -225,6 +225,8 @@ const HomeNew = () => {
           </div>
         </div>
       </main>
+      </div>
+      {/* END 3D CARD CONTAINER */}
 
       {/* Metrics Section */}
       <section className="metrics-section">
