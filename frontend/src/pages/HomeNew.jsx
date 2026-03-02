@@ -262,7 +262,7 @@ const HomeNew = () => {
       {/* Case Studies Section */}
       <section className="case-studies-section">
         <div className="case-studies-container">
-          <h2 className="case-studies-heading">Supercharge your<br/>business with Servify</h2>
+          <h2 className="case-studies-heading">Supercharge your<br/>business with <span className="highlight-purple">MadOver AI</span></h2>
           
           <div className="case-studies-tabs">
             <button className="tab-button active">OEM</button>
