@@ -263,9 +263,9 @@ const Session = () => {
               <svg viewBox="0 0 400 100" className="line-chart">
                 <defs>
                   <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.2" />
-                    <stop offset="50%" stopColor="#06b6d4" stopOpacity="0.8" />
-                    <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.2" />
+                    <stop offset="0%" stopColor="#2563eb" stopOpacity="0.2" />
+                    <stop offset="50%" stopColor="#2563eb" stopOpacity="0.8" />
+                    <stop offset="100%" stopColor="#2563eb" stopOpacity="0.2" />
                   </linearGradient>
                 </defs>
                 <path
@@ -274,7 +274,7 @@ const Session = () => {
                   stroke="url(#lineGradient)"
                   strokeWidth="2"
                 />
-                <circle cx="400" cy="60" r="4" fill="#06b6d4" />
+                <circle cx="400" cy="60" r="4" fill="#2563eb" />
               </svg>
             </div>
           </div>
@@ -296,7 +296,7 @@ const Session = () => {
                   strokeDasharray="5,5"
                   opacity="0.3"
                 />
-                <circle cx="400" cy="50" r="4" fill="#06b6d4" />
+                <circle cx="400" cy="50" r="4" fill="#2563eb" />
               </svg>
             </div>
           </div>

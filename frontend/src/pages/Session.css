@@ -1,9 +1,9 @@
-/* Session Page - Dark Theme */
+/* Session Page - Light Theme (matching app) */
 .session-page {
-  background: #0f172a;
+  background: #f9fafb;
   min-height: 100%;
   padding: 24px;
-  color: #e2e8f0;
+  color: #111827;
 }
 
 .session-loading {
@@ -11,8 +11,8 @@
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #94a3b8;
-  background: #0f172a;
+  color: #6b7280;
+  background: #f9fafb;
 }
 
 /* Stats Row */
@@ -24,10 +24,11 @@
 }
 
 .stat-card {
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: white;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .stat-header {
@@ -39,20 +40,21 @@
 
 .stat-header span {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.5px;
-  color: #94a3b8;
+  color: #6b7280;
+  text-transform: uppercase;
 }
 
 .stat-header svg {
-  color: #64748b;
+  color: #9ca3af;
   cursor: help;
 }
 
 .stat-value {
-  font-size: 24px;
-  font-weight: 600;
-  color: #f1f5f9;
+  font-size: 28px;
+  font-weight: 700;
+  color: #111827;
 }
 
 /* Charts Row */
@@ -64,11 +66,12 @@
 }
 
 .chart-card {
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: white;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 20px 24px;
   min-height: 200px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .chart-header {
@@ -80,13 +83,14 @@
 
 .chart-header span {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.5px;
-  color: #94a3b8;
+  color: #6b7280;
+  text-transform: uppercase;
 }
 
 .chart-header svg {
-  color: #64748b;
+  color: #9ca3af;
   cursor: help;
 }
 
@@ -102,7 +106,7 @@
 }
 
 .chart-value.cyan {
-  color: #06b6d4;
+  color: #2563eb;
 }
 
 .chart-value.red {
@@ -121,10 +125,11 @@
 
 /* Calls Section */
 .calls-section {
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: white;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .calls-header {
@@ -132,13 +137,13 @@
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .calls-header h2 {
   font-size: 18px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: #111827;
   margin: 0;
 }
 
@@ -153,18 +158,19 @@
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: transparent;
-  border: 1px solid #334155;
+  background: white;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
-  color: #94a3b8;
+  color: #374151;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .calls-section .filter-btn:hover {
-  background: #334155;
-  color: #e2e8f0;
+  background: #f9fafb;
+  border-color: #2563eb;
 }
 
 .calls-section .search-box {
@@ -172,8 +178,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: #0f172a;
-  border: 1px solid #334155;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
 }
 
@@ -181,17 +187,17 @@
   background: transparent;
   border: none;
   outline: none;
-  color: #e2e8f0;
+  color: #111827;
   font-size: 13px;
   width: 150px;
 }
 
 .calls-section .search-box input::placeholder {
-  color: #64748b;
+  color: #9ca3af;
 }
 
 .calls-section .search-box svg {
-  color: #64748b;
+  color: #9ca3af;
 }
 
 /* Calls Table */
@@ -208,11 +214,12 @@
   text-align: left;
   padding: 14px 16px;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.5px;
-  color: #64748b;
-  background: #0f172a;
-  border-bottom: 1px solid #334155;
+  color: #6b7280;
+  text-transform: uppercase;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
   white-space: nowrap;
 }
 
@@ -222,14 +229,14 @@
 }
 
 .calls-table th.sortable:hover {
-  color: #94a3b8;
+  color: #2563eb;
 }
 
 .calls-table td {
   padding: 14px 16px;
-  font-size: 13px;
-  color: #e2e8f0;
-  border-bottom: 1px solid #1e293b;
+  font-size: 14px;
+  color: #374151;
+  border-bottom: 1px solid #f3f4f6;
   white-space: nowrap;
 }
 
@@ -238,21 +245,22 @@
 }
 
 .calls-table tbody tr:hover {
-  background: #334155;
+  background: #f9fafb;
 }
 
 .id-cell {
   font-family: 'SF Mono', 'Consolas', monospace;
   font-size: 12px;
-  color: #94a3b8;
+  color: #6b7280;
 }
 
 .direction-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #06b6d4;
+  color: #2563eb;
   font-size: 13px;
+  font-weight: 500;
 }
 
 .direction-badge svg {
@@ -265,11 +273,11 @@
   gap: 8px;
   font-family: 'SF Mono', 'Consolas', monospace;
   font-size: 12px;
-  color: #94a3b8;
+  color: #6b7280;
 }
 
 .session-cell svg:first-child {
-  color: #64748b;
+  color: #9ca3af;
 }
 
 .session-cell span {
@@ -287,14 +295,14 @@
   background: transparent;
   border: none;
   border-radius: 4px;
-  color: #64748b;
+  color: #9ca3af;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .copy-btn:hover {
-  background: #475569;
-  color: #e2e8f0;
+  background: #f3f4f6;
+  color: #2563eb;
 }
 
 .empty-table {
@@ -303,7 +311,7 @@
   align-items: center;
   justify-content: center;
   padding: 48px;
-  color: #64748b;
+  color: #6b7280;
 }
 
 .empty-table svg {
