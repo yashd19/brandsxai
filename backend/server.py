@@ -135,6 +135,50 @@ def init_mysql_tables(connection):
                 )
             """)
             
+            # Campaigns table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS brandsxai_campaigns (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    brand_id INT NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    start_date DATE,
+                    end_date DATE,
+                    target_audience VARCHAR(255),
+                    call_script TEXT,
+                    status ENUM('draft', 'active', 'paused', 'completed') DEFAULT 'draft',
+                    created_by INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (brand_id) REFERENCES brandsxai_brands(id) ON DELETE CASCADE,
+                    INDEX idx_campaign_brand (brand_id),
+                    INDEX idx_campaign_status (status)
+                )
+            """)
+            
+            # Opportunities/Leads table for campaigns
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS brandsxai_opportunities (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    campaign_id INT NOT NULL,
+                    brand_id INT NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    phone VARCHAR(50),
+                    email VARCHAR(255),
+                    business_name VARCHAR(255),
+                    opportunity_value DECIMAL(10, 2) DEFAULT 0.00,
+                    stage ENUM('dialing', 'interested', 'not_interested', 'callback', 'store_visit', 'invalid_number') DEFAULT 'dialing',
+                    notes TEXT,
+                    last_called_at TIMESTAMP NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (campaign_id) REFERENCES brandsxai_campaigns(id) ON DELETE CASCADE,
+                    FOREIGN KEY (brand_id) REFERENCES brandsxai_brands(id) ON DELETE CASCADE,
+                    INDEX idx_opp_campaign (campaign_id),
+                    INDEX idx_opp_stage (stage)
+                )
+            """)
+            
             # Leads table (for contact form)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS brandsxai_leads (
@@ -179,6 +223,10 @@ def init_mysql_tables(connection):
                 cursor.execute(
                     "INSERT INTO brandsxai_feature_pages (feature_id, name, icon, route, display_order) VALUES (%s, %s, %s, %s, %s)",
                     (voice_ai_id, 'Session', 'Clock', '/dashboard/voice-ai/session', 3)
+                )
+                cursor.execute(
+                    "INSERT INTO brandsxai_feature_pages (feature_id, name, icon, route, display_order) VALUES (%s, %s, %s, %s, %s)",
+                    (voice_ai_id, 'Campaign', 'Megaphone', '/dashboard/voice-ai/campaign', 4)
                 )
                 logger.info("Created Voice AI feature with pages")
             
@@ -230,9 +278,19 @@ async def init_mongodb_collections():
                 "pages": [
                     {"id": 1, "name": "Contacts", "icon": "Users", "route": "/dashboard/voice-ai/contacts", "display_order": 1},
                     {"id": 2, "name": "Dashboards", "icon": "LayoutDashboard", "route": "/dashboard/voice-ai/dashboards", "display_order": 2},
-                    {"id": 3, "name": "Session", "icon": "Clock", "route": "/dashboard/voice-ai/session", "display_order": 3}
+                    {"id": 3, "name": "Session", "icon": "Clock", "route": "/dashboard/voice-ai/session", "display_order": 3},
+                    {"id": 4, "name": "Campaign", "icon": "Megaphone", "route": "/dashboard/voice-ai/campaign", "display_order": 4}
                 ]
             })
+        else:
+            # Update existing Voice AI to add Campaign page if missing
+            if not any(p.get('name') == 'Campaign' for p in voice_ai.get('pages', [])):
+                pages = voice_ai.get('pages', [])
+                pages.append({"id": 4, "name": "Campaign", "icon": "Megaphone", "route": "/dashboard/voice-ai/campaign", "display_order": 4})
+                await mongo_db.brandsxai_features.update_one(
+                    {"name": "Voice AI"},
+                    {"$set": {"pages": pages}}
+                )
         
         claim = await mongo_db.brandsxai_features.find_one({"name": "Claim Processing"})
         if not claim:
@@ -714,6 +772,290 @@ async def create_lead(lead: LeadCreate):
         "message": lead.message, "created_at": datetime.now(timezone.utc)
     })
     return {"message": "Lead created", "id": new_id, "db_source": "mongodb"}
+
+# ==================== CAMPAIGNS ====================
+
+class CampaignCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    target_audience: Optional[str] = None
+    call_script: Optional[str] = None
+
+class OpportunityCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    business_name: Optional[str] = None
+    opportunity_value: float = 0.0
+    notes: Optional[str] = None
+
+class OpportunityStageUpdate(BaseModel):
+    stage: str
+
+@api_router.get("/campaigns")
+async def get_campaigns(current_user: dict = Depends(get_current_user)):
+    """Get all campaigns for the user's brand"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    if not brand_id:
+        raise HTTPException(status_code=400, detail="User has no brand assigned")
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT c.*, 
+                           COUNT(o.id) as total_opportunities,
+                           COALESCE(SUM(o.opportunity_value), 0) as total_value
+                    FROM brandsxai_campaigns c
+                    LEFT JOIN brandsxai_opportunities o ON c.id = o.campaign_id
+                    WHERE c.brand_id = %s
+                    GROUP BY c.id
+                    ORDER BY c.created_at DESC
+                """, (brand_id,))
+                campaigns = cursor.fetchall()
+                return {"campaigns": campaigns, "db_source": "mysql"}
+        except Exception as e:
+            logger.error(f"MySQL get campaigns error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    campaigns = await mongo_db.brandsxai_campaigns.find(
+        {"brand_id": brand_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    
+    # Add opportunity stats
+    for c in campaigns:
+        opps = await mongo_db.brandsxai_opportunities.find({"campaign_id": c['id']}, {"_id": 0}).to_list(1000)
+        c['total_opportunities'] = len(opps)
+        c['total_value'] = sum(o.get('opportunity_value', 0) for o in opps)
+    
+    return {"campaigns": campaigns, "db_source": "mongodb"}
+
+@api_router.post("/campaigns")
+async def create_campaign(campaign: CampaignCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new campaign"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    user_id = int(current_user.get('sub'))
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO brandsxai_campaigns 
+                    (brand_id, name, description, start_date, end_date, target_audience, call_script, created_by, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active')
+                """, (brand_id, campaign.name, campaign.description, campaign.start_date, 
+                      campaign.end_date, campaign.target_audience, campaign.call_script, user_id))
+                mysql_conn.commit()
+                campaign_id = cursor.lastrowid
+                
+                cursor.execute("SELECT * FROM brandsxai_campaigns WHERE id = %s", (campaign_id,))
+                result = cursor.fetchone()
+                return {"campaign": result, "db_source": "mysql"}
+        except Exception as e:
+            logger.error(f"MySQL create campaign error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    last_campaign = await mongo_db.brandsxai_campaigns.find_one(sort=[("id", -1)])
+    new_id = (last_campaign.get('id', 0) + 1) if last_campaign else 1
+    
+    new_campaign = {
+        "id": new_id,
+        "brand_id": brand_id,
+        "name": campaign.name,
+        "description": campaign.description,
+        "start_date": campaign.start_date,
+        "end_date": campaign.end_date,
+        "target_audience": campaign.target_audience,
+        "call_script": campaign.call_script,
+        "status": "active",
+        "created_by": user_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await mongo_db.brandsxai_campaigns.insert_one(new_campaign)
+    new_campaign.pop('_id', None)
+    
+    return {"campaign": new_campaign, "db_source": "mongodb"}
+
+@api_router.get("/campaigns/{campaign_id}")
+async def get_campaign(campaign_id: int, current_user: dict = Depends(get_current_user)):
+    """Get campaign details with opportunities"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("SELECT * FROM brandsxai_campaigns WHERE id = %s AND brand_id = %s", (campaign_id, brand_id))
+                campaign = cursor.fetchone()
+                if not campaign:
+                    raise HTTPException(status_code=404, detail="Campaign not found")
+                
+                cursor.execute("SELECT * FROM brandsxai_opportunities WHERE campaign_id = %s ORDER BY created_at DESC", (campaign_id,))
+                opportunities = cursor.fetchall()
+                
+                # Group by stage
+                stages = {}
+                for stage in ['dialing', 'interested', 'not_interested', 'callback', 'store_visit', 'invalid_number']:
+                    stage_opps = [o for o in opportunities if o['stage'] == stage]
+                    stages[stage] = {
+                        'opportunities': stage_opps,
+                        'count': len(stage_opps),
+                        'total_value': sum(float(o['opportunity_value'] or 0) for o in stage_opps)
+                    }
+                
+                return {"campaign": campaign, "stages": stages, "db_source": "mysql"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"MySQL get campaign error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    campaign = await mongo_db.brandsxai_campaigns.find_one({"id": campaign_id, "brand_id": brand_id}, {"_id": 0})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    opportunities = await mongo_db.brandsxai_opportunities.find({"campaign_id": campaign_id}, {"_id": 0}).to_list(1000)
+    
+    stages = {}
+    for stage in ['dialing', 'interested', 'not_interested', 'callback', 'store_visit', 'invalid_number']:
+        stage_opps = [o for o in opportunities if o.get('stage') == stage]
+        stages[stage] = {
+            'opportunities': stage_opps,
+            'count': len(stage_opps),
+            'total_value': sum(o.get('opportunity_value', 0) for o in stage_opps)
+        }
+    
+    return {"campaign": campaign, "stages": stages, "db_source": "mongodb"}
+
+@api_router.post("/campaigns/{campaign_id}/opportunities")
+async def create_opportunity(campaign_id: int, opportunity: OpportunityCreate, current_user: dict = Depends(get_current_user)):
+    """Add an opportunity to a campaign"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                # Verify campaign belongs to user's brand
+                cursor.execute("SELECT id FROM brandsxai_campaigns WHERE id = %s AND brand_id = %s", (campaign_id, brand_id))
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Campaign not found")
+                
+                cursor.execute("""
+                    INSERT INTO brandsxai_opportunities 
+                    (campaign_id, brand_id, name, phone, email, business_name, opportunity_value, notes, stage)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'dialing')
+                """, (campaign_id, brand_id, opportunity.name, opportunity.phone, opportunity.email,
+                      opportunity.business_name, opportunity.opportunity_value, opportunity.notes))
+                mysql_conn.commit()
+                
+                opp_id = cursor.lastrowid
+                cursor.execute("SELECT * FROM brandsxai_opportunities WHERE id = %s", (opp_id,))
+                result = cursor.fetchone()
+                return {"opportunity": result, "db_source": "mysql"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"MySQL create opportunity error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    campaign = await mongo_db.brandsxai_campaigns.find_one({"id": campaign_id, "brand_id": brand_id})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    last_opp = await mongo_db.brandsxai_opportunities.find_one(sort=[("id", -1)])
+    new_id = (last_opp.get('id', 0) + 1) if last_opp else 1
+    
+    new_opp = {
+        "id": new_id,
+        "campaign_id": campaign_id,
+        "brand_id": brand_id,
+        "name": opportunity.name,
+        "phone": opportunity.phone,
+        "email": opportunity.email,
+        "business_name": opportunity.business_name,
+        "opportunity_value": opportunity.opportunity_value,
+        "notes": opportunity.notes,
+        "stage": "dialing",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await mongo_db.brandsxai_opportunities.insert_one(new_opp)
+    new_opp.pop('_id', None)
+    
+    return {"opportunity": new_opp, "db_source": "mongodb"}
+
+@api_router.put("/opportunities/{opportunity_id}/stage")
+async def update_opportunity_stage(opportunity_id: int, update: OpportunityStageUpdate, current_user: dict = Depends(get_current_user)):
+    """Update opportunity stage (for drag-drop in Kanban)"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    valid_stages = ['dialing', 'interested', 'not_interested', 'callback', 'store_visit', 'invalid_number']
+    
+    if update.stage not in valid_stages:
+        raise HTTPException(status_code=400, detail=f"Invalid stage. Must be one of: {valid_stages}")
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE brandsxai_opportunities SET stage = %s, updated_at = NOW() WHERE id = %s AND brand_id = %s",
+                    (update.stage, opportunity_id, brand_id)
+                )
+                mysql_conn.commit()
+                
+                if cursor.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Opportunity not found")
+                
+                cursor.execute("SELECT * FROM brandsxai_opportunities WHERE id = %s", (opportunity_id,))
+                result = cursor.fetchone()
+                return {"opportunity": result, "db_source": "mysql"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"MySQL update stage error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    result = await mongo_db.brandsxai_opportunities.update_one(
+        {"id": opportunity_id, "brand_id": brand_id},
+        {"$set": {"stage": update.stage, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    
+    opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id}, {"_id": 0})
+    return {"opportunity": opp, "db_source": "mongodb"}
 
 # ==================== UTILITY ====================
 

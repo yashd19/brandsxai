@@ -209,6 +209,15 @@
 /* Content */
 .dashboard-content {
   flex: 1;
+  overflow: auto;
+}
+
+.dashboard-content:has(.campaign-list),
+.dashboard-content:has(.campaign-pipeline) {
+  padding: 0;
+}
+
+.dashboard-content:has(.page-placeholder) {
   padding: 2rem;
 }
 

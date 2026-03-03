@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Phone, FileCheck, Users, LayoutDashboard, Clock, LogOut, ChevronRight } from 'lucide-react';
+import { Phone, FileCheck, Users, LayoutDashboard, Clock, LogOut, ChevronRight, Megaphone } from 'lucide-react';
+import Campaign from './Campaign';
 import './Dashboard.css';
 
 const iconMap = {
@@ -8,7 +9,8 @@ const iconMap = {
   FileCheck: FileCheck,
   Users: Users,
   LayoutDashboard: LayoutDashboard,
-  Clock: Clock
+  Clock: Clock,
+  Megaphone: Megaphone
 };
 
 const Dashboard = () => {
@@ -127,7 +129,9 @@ const Dashboard = () => {
 
         {/* Page Content */}
         <div className="dashboard-content">
-          {activePage ? (
+          {activePage?.name === 'Campaign' ? (
+            <Campaign />
+          ) : activePage ? (
             <div className="page-placeholder">
               <div className="placeholder-icon">
                 {getIcon(activePage.icon, 64)}
