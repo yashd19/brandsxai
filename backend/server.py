@@ -788,11 +788,21 @@ class OpportunityCreate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     business_name: Optional[str] = None
-    opportunity_value: float = 0.0
     notes: Optional[str] = None
 
 class OpportunityStageUpdate(BaseModel):
     stage: str
+
+class OpportunityUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    business_name: Optional[str] = None
+    notes: Optional[str] = None
+    call_summary: Optional[str] = None
+    recording_url: Optional[str] = None
+    call_duration: Optional[int] = None
+    call_outcome: Optional[str] = None
 
 @api_router.get("/campaigns")
 async def get_campaigns(current_user: dict = Depends(get_current_user)):
@@ -966,10 +976,10 @@ async def create_opportunity(campaign_id: int, opportunity: OpportunityCreate, c
                 
                 cursor.execute("""
                     INSERT INTO brandsxai_opportunities 
-                    (campaign_id, brand_id, name, phone, email, business_name, opportunity_value, notes, stage)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'dialing')
+                    (campaign_id, brand_id, name, phone, email, business_name, notes, stage)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'dialing')
                 """, (campaign_id, brand_id, opportunity.name, opportunity.phone, opportunity.email,
-                      opportunity.business_name, opportunity.opportunity_value, opportunity.notes))
+                      opportunity.business_name, opportunity.notes))
                 mysql_conn.commit()
                 
                 opp_id = cursor.lastrowid
@@ -999,9 +1009,13 @@ async def create_opportunity(campaign_id: int, opportunity: OpportunityCreate, c
         "phone": opportunity.phone,
         "email": opportunity.email,
         "business_name": opportunity.business_name,
-        "opportunity_value": opportunity.opportunity_value,
         "notes": opportunity.notes,
         "stage": "dialing",
+        "call_summary": None,
+        "recording_url": None,
+        "call_duration": None,
+        "call_outcome": None,
+        "last_called_at": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1056,6 +1070,156 @@ async def update_opportunity_stage(opportunity_id: int, update: OpportunityStage
     
     opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id}, {"_id": 0})
     return {"opportunity": opp, "db_source": "mongodb"}
+
+@api_router.get("/opportunities/{opportunity_id}")
+async def get_opportunity(opportunity_id: int, current_user: dict = Depends(get_current_user)):
+    """Get single opportunity details"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("SELECT * FROM brandsxai_opportunities WHERE id = %s AND brand_id = %s", (opportunity_id, brand_id))
+                result = cursor.fetchone()
+                if not result:
+                    raise HTTPException(status_code=404, detail="Opportunity not found")
+                return {"opportunity": result, "db_source": "mysql"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"MySQL get opportunity error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id, "brand_id": brand_id}, {"_id": 0})
+    if not opp:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    return {"opportunity": opp, "db_source": "mongodb"}
+
+@api_router.put("/opportunities/{opportunity_id}")
+async def update_opportunity(opportunity_id: int, update: OpportunityUpdate, current_user: dict = Depends(get_current_user)):
+    """Update opportunity details"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    
+    # Build update dict with non-None values
+    update_data = {k: v for k, v in update.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                set_clause = ", ".join([f"{k} = %s" for k in update_data.keys()])
+                values = list(update_data.values()) + [opportunity_id, brand_id]
+                cursor.execute(
+                    f"UPDATE brandsxai_opportunities SET {set_clause} WHERE id = %s AND brand_id = %s",
+                    values
+                )
+                mysql_conn.commit()
+                
+                if cursor.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Opportunity not found")
+                
+                cursor.execute("SELECT * FROM brandsxai_opportunities WHERE id = %s", (opportunity_id,))
+                result = cursor.fetchone()
+                return {"opportunity": result, "db_source": "mysql"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"MySQL update opportunity error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    result = await mongo_db.brandsxai_opportunities.update_one(
+        {"id": opportunity_id, "brand_id": brand_id},
+        {"$set": update_data}
+    )
+    
+    if result.modified_count == 0:
+        # Check if exists
+        existing = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id, "brand_id": brand_id})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Opportunity not found")
+    
+    opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id}, {"_id": 0})
+    return {"opportunity": opp, "db_source": "mongodb"}
+
+# ==================== SESSION/CALLS ====================
+
+@api_router.get("/sessions/calls")
+async def get_session_calls(current_user: dict = Depends(get_current_user)):
+    """Get all call sessions for the user's brand"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT * FROM brandsxai_calls 
+                    WHERE brand_id = %s 
+                    ORDER BY started_at DESC 
+                    LIMIT 100
+                """, (brand_id,))
+                calls = cursor.fetchall()
+                
+                total_duration = sum(c.get('duration', 0) or 0 for c in calls)
+                avg_duration = total_duration // len(calls) if calls else 0
+                active_calls = len([c for c in calls if c.get('status') == 'active'])
+                calls_with_issues = len([c for c in calls if c.get('has_issue')])
+                
+                return {
+                    "calls": calls,
+                    "stats": {
+                        "totalCalls": len(calls),
+                        "totalDuration": total_duration,
+                        "avgDuration": avg_duration,
+                        "activeCalls": active_calls,
+                        "callsWithIssues": calls_with_issues
+                    },
+                    "db_source": "mysql"
+                }
+        except Exception as e:
+            logger.error(f"MySQL get calls error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    calls = await mongo_db.brandsxai_calls.find(
+        {"brand_id": brand_id}, {"_id": 0}
+    ).sort("started_at", -1).limit(100).to_list(100)
+    
+    total_duration = sum(c.get('duration', 0) or 0 for c in calls)
+    avg_duration = total_duration // len(calls) if calls else 0
+    active_calls = len([c for c in calls if c.get('status') == 'active'])
+    calls_with_issues = len([c for c in calls if c.get('has_issue')])
+    
+    return {
+        "calls": calls,
+        "stats": {
+            "totalCalls": len(calls),
+            "totalDuration": total_duration,
+            "avgDuration": avg_duration,
+            "activeCalls": active_calls,
+            "callsWithIssues": calls_with_issues
+        },
+        "db_source": "mongodb"
+    }
 
 # ==================== UTILITY ====================
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Phone, FileCheck, Users, LayoutDashboard, Clock, LogOut, ChevronRight, Megaphone } from 'lucide-react';
 import Campaign from './Campaign';
+import Session from './Session';
 import './Dashboard.css';
 
 const iconMap = {
@@ -131,6 +132,8 @@ const Dashboard = () => {
         <div className="dashboard-content">
           {activePage?.name === 'Campaign' ? (
             <Campaign />
+          ) : activePage?.name === 'Session' ? (
+            <Session />
           ) : activePage ? (
             <div className="page-placeholder">
               <div className="placeholder-icon">
