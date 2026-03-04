@@ -203,9 +203,10 @@ const HomeNew = () => {
               <input
                 type="text"
                 className="hero-search-input"
-                placeholder="What are you shopping for today?"
+                placeholder="What are you looking for today?"
+                readOnly
               />
-              <button className="hero-search-button">
+              <button className="hero-search-button" onClick={() => window.location.href = '/contact'}>
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                   <path d="M7.5 3.33334L13.3333 10L7.5 16.6667" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>

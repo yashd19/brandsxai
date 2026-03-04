@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Phone, FileCheck, Users, LayoutDashboard, Clock, LogOut, ChevronRight, Megaphone } from 'lucide-react';
 import Campaign from './Campaign';
 import Session from './Session';
+import Contacts from './Contacts';
 import './Dashboard.css';
 
 const iconMap = {
@@ -134,6 +135,8 @@ const Dashboard = () => {
             <Campaign />
           ) : activePage?.name === 'Session' ? (
             <Session />
+          ) : activePage?.name === 'Contacts' ? (
+            <Contacts />
           ) : activePage ? (
             <div className="page-placeholder">
               <div className="placeholder-icon">

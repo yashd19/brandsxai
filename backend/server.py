@@ -1156,6 +1156,48 @@ async def update_opportunity(opportunity_id: int, update: OpportunityUpdate, cur
     opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id}, {"_id": 0})
     return {"opportunity": opp, "db_source": "mongodb"}
 
+@api_router.get("/contacts")
+async def get_all_contacts(current_user: dict = Depends(get_current_user)):
+    """Get all contacts/opportunities across all campaigns for the user's brand"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT o.*, c.name as campaign_name 
+                    FROM brandsxai_opportunities o
+                    JOIN brandsxai_campaigns c ON o.campaign_id = c.id
+                    WHERE o.brand_id = %s
+                    ORDER BY o.created_at DESC
+                """, (brand_id,))
+                contacts = cursor.fetchall()
+                return {"contacts": contacts, "count": len(contacts), "db_source": "mysql"}
+        except Exception as e:
+            logger.error(f"MySQL get contacts error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    # First get campaign names
+    campaigns = await mongo_db.brandsxai_campaigns.find({"brand_id": brand_id}, {"_id": 0}).to_list(100)
+    campaign_map = {c['id']: c['name'] for c in campaigns}
+    
+    # Get all opportunities
+    opportunities = await mongo_db.brandsxai_opportunities.find(
+        {"brand_id": brand_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(1000)
+    
+    # Add campaign names
+    for opp in opportunities:
+        opp['campaign_name'] = campaign_map.get(opp.get('campaign_id'), 'Unknown')
+    
+    return {"contacts": opportunities, "count": len(opportunities), "db_source": "mongodb"}
+
 # ==================== SESSION/CALLS ====================
 
 @api_router.get("/sessions/calls")
