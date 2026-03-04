@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Campaign Management - CRUD Operations', () => {
-  const baseURL = 'https://multi-tenant-voice.preview.emergentagent.com';
+  const baseURL = 'https://rbac-platform-test.preview.emergentagent.com';
   const timestamp = Date.now();
   let createdCampaignName = `TEST_E2E_Campaign_${timestamp}`;
   let createdOpportunityName = `TEST_E2E_Lead_${timestamp}`;

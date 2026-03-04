@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Campaign Management - Core Flows', () => {
-  const baseURL = 'https://multi-tenant-voice.preview.emergentagent.com';
+  const baseURL = 'https://rbac-platform-test.preview.emergentagent.com';
   
   test.beforeEach(async ({ page }) => {
     // Remove Emergent badge if present

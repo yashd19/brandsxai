@@ -11,7 +11,7 @@ export default defineConfig({
     ['json', { outputFile: '/root/.emergent/automation_output/20260303_051042/results.json' }],
   ],
   use: {
-    baseURL: 'https://multi-tenant-voice.preview.emergentagent.com',
+    baseURL: 'https://rbac-platform-test.preview.emergentagent.com',
     screenshot: 'only-on-failure',
     trace: 'off',
     headless: true,

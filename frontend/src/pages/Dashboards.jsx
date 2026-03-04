@@ -15,89 +15,85 @@ const Dashboards = () => {
   const [loading, setLoading] = useState(true);
   const [showParticipants, setShowParticipants] = useState(true);
 
-  const token = localStorage.getItem('token');
-
   useEffect(() => {
-    fetchDashboardStats();
-  }, []);
-
-  const fetchDashboardStats = async () => {
-    let contacts = [];
-    let campaigns = [];
-    let callStats = { totalCalls: 0, totalDuration: 0, avgDuration: 0 };
-
-    // Fetch contacts
-    try {
-      const contactsRes = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/contacts`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (contactsRes.ok) {
-        const data = await contactsRes.json();
-        contacts = data.contacts || [];
-      }
-    } catch (e) {
-      console.error('Error fetching contacts:', e);
-    }
-
-    // Fetch campaigns
-    try {
-      const campaignsRes = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/campaigns`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (campaignsRes.ok) {
-        const campaignsData = await campaignsRes.json();
-        campaigns = campaignsData.campaigns || [];
-      }
-    } catch (e) {
-      console.error('Error fetching campaigns:', e);
-    }
-
-    // Fetch call stats
-    try {
-      const callsRes = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/sessions/calls`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (callsRes.ok) {
-        const callData = await callsRes.json();
-        callStats = callData.stats || callStats;
-      }
-    } catch (e) {
-      console.error('Error fetching calls:', e);
-    }
-
-    // Calculate stage breakdown
-    const stageBreakdown = {
-      dialing: 0,
-      interested: 0,
-      not_interested: 0,
-      callback: 0,
-      store_visit: 0,
-      invalid_number: 0
-    };
+    const token = localStorage.getItem('token');
     
-    contacts.forEach(c => {
-      if (stageBreakdown.hasOwnProperty(c.stage)) {
-        stageBreakdown[c.stage]++;
+    const loadData = async () => {
+      if (!token) {
+        setLoading(false);
+        return;
       }
-    });
 
-    // Calculate success rate (connected / total attempted)
-    const totalAttempted = contacts.length - stageBreakdown.dialing;
-    const connected = stageBreakdown.interested + stageBreakdown.callback + stageBreakdown.store_visit + stageBreakdown.not_interested;
-    const successRate = totalAttempted > 0 ? Math.round((connected / totalAttempted) * 1000) / 10 : 0;
+      let contacts = [];
+      let campaigns = [];
+      let callStats = { totalCalls: 0, totalDuration: 0, avgDuration: 0 };
 
-    setStats({
-      totalContacts: contacts.length,
-      totalCalls: callStats.totalCalls || 0,
-      totalDuration: callStats.totalDuration || 0,
-      avgDuration: callStats.avgDuration || 0,
-      successRate,
-      stageBreakdown,
-      campaigns: campaigns.slice(0, 5)
-    });
+      try {
+        const fetchOptions = { headers: { 'Authorization': `Bearer ${token}` } };
+        
+        const [contactsRes, campaignsRes, callsRes] = await Promise.all([
+          fetch(`${process.env.REACT_APP_BACKEND_URL}/api/contacts`, fetchOptions),
+          fetch(`${process.env.REACT_APP_BACKEND_URL}/api/campaigns`, fetchOptions),
+          fetch(`${process.env.REACT_APP_BACKEND_URL}/api/sessions/calls`, fetchOptions)
+        ]);
 
-    setLoading(false);
-  };
+        // Process contacts
+        if (contactsRes.ok) {
+          const data = await contactsRes.json();
+          contacts = data.contacts || [];
+        }
+
+        // Process campaigns
+        if (campaignsRes.ok) {
+          const campaignsData = await campaignsRes.json();
+          campaigns = campaignsData.campaigns || [];
+        }
+
+        // Process call stats
+        if (callsRes.ok) {
+          const callData = await callsRes.json();
+          callStats = callData.stats || callStats;
+        }
+
+        // Calculate stage breakdown
+        const stageBreakdown = {
+          dialing: 0,
+          interested: 0,
+          not_interested: 0,
+          callback: 0,
+          store_visit: 0,
+          invalid_number: 0
+        };
+        
+        contacts.forEach(c => {
+          if (stageBreakdown.hasOwnProperty(c.stage)) {
+            stageBreakdown[c.stage]++;
+          }
+        });
+
+        // Calculate success rate
+        const totalAttempted = contacts.length - stageBreakdown.dialing;
+        const connected = stageBreakdown.interested + stageBreakdown.callback + stageBreakdown.store_visit + stageBreakdown.not_interested;
+        const successRate = totalAttempted > 0 ? Math.round((connected / totalAttempted) * 1000) / 10 : 0;
+
+        setStats({
+          totalContacts: contacts.length,
+          totalCalls: callStats.totalCalls || 0,
+          totalDuration: callStats.totalDuration || 0,
+          avgDuration: callStats.avgDuration || 0,
+          successRate,
+          stageBreakdown,
+          campaigns: campaigns.slice(0, 5)
+        });
+      } catch (err) {
+        console.error('Dashboard stats error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
 
   // Donut Chart SVG Component
   const DonutChart = ({ data, size = 160, strokeWidth = 20 }) => {
