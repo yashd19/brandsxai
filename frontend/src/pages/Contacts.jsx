@@ -14,6 +14,8 @@ const Contacts = () => {
   const [newContact, setNewContact] = useState({
     name: '', phone: '', email: '', business_name: '', campaign_id: ''
   });
+  const [successMessage, setSuccessMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const token = localStorage.getItem('token');
 
@@ -87,6 +89,8 @@ const Contacts = () => {
       return;
     }
     
+    setSubmitting(true);
+    
     try {
       const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/campaigns/${newContact.campaign_id}/opportunities`, {
         method: 'POST',
@@ -100,12 +104,26 @@ const Contacts = () => {
       });
       
       if (res.ok) {
+        // Close modal first
         setShowAddContact(false);
         setNewContact({ name: '', phone: '', email: '', business_name: '', campaign_id: '' });
+        
+        // Show success message
+        setSuccessMessage('Contact added successfully! Added to Dialing stage.');
+        setTimeout(() => setSuccessMessage(''), 4000);
+        
+        // Refresh contacts list
         fetchAllContacts();
+      } else {
+        const error = await res.text();
+        console.error('Error response:', error);
+        alert('Failed to add contact. Please try again.');
       }
     } catch (err) {
       console.error('Error adding contact:', err);
+      alert('Error adding contact: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -176,6 +194,17 @@ const Contacts = () => {
 
   return (
     <div className="contacts-page" data-testid="contacts-page">
+      {/* Success Toast */}
+      {successMessage && (
+        <div className="success-toast" data-testid="success-toast">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18Z" fill="#10B981"/>
+            <path d="M7 10L9 12L13 8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {successMessage}
+        </div>
+      )}
+      
       {/* Header */}
       <div className="contacts-header">
         <div className="header-left">
@@ -374,8 +403,10 @@ const Contacts = () => {
                 />
               </div>
               <div className="modal-actions">
-                <button type="button" className="cancel-btn" onClick={() => setShowAddContact(false)}>Cancel</button>
-                <button type="submit" className="submit-btn">Add Contact</button>
+                <button type="button" className="cancel-btn" onClick={() => setShowAddContact(false)} disabled={submitting}>Cancel</button>
+                <button type="submit" className="submit-btn" disabled={submitting}>
+                  {submitting ? 'Adding...' : 'Add Contact'}
+                </button>
               </div>
             </form>
           </div>

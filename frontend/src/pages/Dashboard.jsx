@@ -4,6 +4,7 @@ import { Phone, FileCheck, Users, LayoutDashboard, Clock, LogOut, ChevronRight, 
 import Campaign from './Campaign';
 import Session from './Session';
 import Contacts from './Contacts';
+import Dashboards from './Dashboards';
 import './Dashboard.css';
 
 const iconMap = {
@@ -131,7 +132,9 @@ const Dashboard = () => {
 
         {/* Page Content */}
         <div className="dashboard-content">
-          {activePage?.name === 'Campaign' ? (
+          {activePage?.name === 'Dashboards' ? (
+            <Dashboards />
+          ) : activePage?.name === 'Campaign' ? (
             <Campaign />
           ) : activePage?.name === 'Session' ? (
             <Session />
