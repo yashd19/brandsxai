@@ -1156,6 +1156,98 @@ async def update_opportunity(opportunity_id: int, update: OpportunityUpdate, cur
     opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id}, {"_id": 0})
     return {"opportunity": opp, "db_source": "mongodb"}
 
+class DialRequest(BaseModel):
+    phone: str
+
+@api_router.post("/opportunities/{opportunity_id}/dial")
+async def dial_opportunity(opportunity_id: int, dial_req: DialRequest, current_user: dict = Depends(get_current_user)):
+    """Initiate AI voice call to an opportunity - Placeholder for AI calling integration"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    brand_id = current_user.get('brand_id')
+    
+    # TODO: Integrate with AI Voice Calling service (Bland.ai, Retell.ai, Vapi.ai, etc.)
+    # For now, this is a mock implementation that simulates a call
+    
+    # Simulated AI call outcomes
+    import random
+    outcomes = ['interested', 'not_interested', 'callback', 'invalid_number']
+    weights = [0.4, 0.3, 0.2, 0.1]  # 40% interested, 30% not interested, etc.
+    
+    # Simulate call result
+    new_stage = random.choices(outcomes, weights=weights)[0]
+    
+    # Generate mock call summary based on outcome
+    summaries = {
+        'interested': "Customer expressed interest in the product. They requested more information about pricing and asked for a follow-up call next week. Positive tone throughout the conversation.",
+        'not_interested': "Customer indicated they are not interested at this time. They mentioned they recently purchased a similar product from a competitor.",
+        'callback': "Customer was busy and requested a callback. Best time to reach them is in the afternoon around 3 PM.",
+        'invalid_number': "Unable to connect - number appears to be disconnected or invalid."
+    }
+    
+    call_summary = summaries.get(new_stage, "Call completed.")
+    call_duration = random.randint(30, 300) if new_stage != 'invalid_number' else 0
+    
+    # Update the opportunity with call results
+    update_data = {
+        'stage': new_stage,
+        'call_summary': call_summary,
+        'call_duration': call_duration,
+        'call_outcome': new_stage,
+        'last_called_at': datetime.now(timezone.utc).isoformat(),
+        'updated_at': datetime.now(timezone.utc).isoformat()
+    }
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                set_clause = ", ".join([f"{k} = %s" for k in update_data.keys()])
+                values = list(update_data.values()) + [opportunity_id, brand_id]
+                cursor.execute(
+                    f"UPDATE brandsxai_opportunities SET {set_clause} WHERE id = %s AND brand_id = %s",
+                    values
+                )
+                mysql_conn.commit()
+                
+                cursor.execute("SELECT * FROM brandsxai_opportunities WHERE id = %s", (opportunity_id,))
+                result = cursor.fetchone()
+                return {
+                    "success": True,
+                    "opportunity": result,
+                    "call_result": {
+                        "stage": new_stage,
+                        "summary": call_summary,
+                        "duration": call_duration
+                    },
+                    "db_source": "mysql",
+                    "note": "This is a MOCK response. Integrate with AI calling service for real calls."
+                }
+        except Exception as e:
+            logger.error(f"MySQL dial error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    await mongo_db.brandsxai_opportunities.update_one(
+        {"id": opportunity_id, "brand_id": brand_id},
+        {"$set": update_data}
+    )
+    
+    opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id}, {"_id": 0})
+    return {
+        "success": True,
+        "opportunity": opp,
+        "call_result": {
+            "stage": new_stage,
+            "summary": call_summary,
+            "duration": call_duration
+        },
+        "db_source": "mongodb",
+        "note": "This is a MOCK response. Integrate with AI calling service for real calls."
+    }
+
 @api_router.get("/contacts")
 async def get_all_contacts(current_user: dict = Depends(get_current_user)):
     """Get all contacts/opportunities across all campaigns for the user's brand"""

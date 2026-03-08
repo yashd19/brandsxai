@@ -663,6 +663,55 @@
   color: #2563eb;
 }
 
+/* AI Dial Button in Modal */
+.dial-ai-btn-modal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 16px;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.dial-ai-btn-modal:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+}
+
+.dial-ai-btn-modal:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.dial-ai-btn-modal:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dial-ai-btn-modal.dialing {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.dial-ai-btn-modal .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* List View */
 .pipeline-list {
   padding: 20px 24px;

@@ -40,6 +40,7 @@ MadOver AI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featu
   - [x] **List View Toggle** with table display
   - [x] **Advanced Filters** (only in list view) - Stage, Has Recording
   - [x] Sort functionality
+  - [x] **"Dial with AI" button** in opportunity modal (for dialing stage contacts) - MOCK implementation
 - [x] **Session Page** (light theme)
   - [x] Stats cards (Total Calls, Duration, Average)
   - [x] Active Calls chart with line graph
@@ -67,7 +68,7 @@ MadOver AI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featu
 | Brand User | mukesh | mukesh123 |
 
 ### Pending Tasks
-- [ ] **P1**: Integrate actual AI calling service (API endpoint ready)
+- [ ] **P1**: Integrate REAL AI calling service (Bland.ai, Retell.ai, Vapi.ai, or Twilio+OpenAI)
 - [ ] **P2**: About Us page content
 - [ ] **P2**: Case study detail pages
 - [ ] **P2**: Refactor server.py into modular routers
@@ -90,6 +91,7 @@ MadOver AI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featu
 - `PUT /api/opportunities/{id}/stage` - Update stage (drag-drop)
 - `GET /api/opportunities/{id}` - Get opportunity details
 - `PUT /api/opportunities/{id}` - Update opportunity (call_summary, recording_url, etc.)
+- `POST /api/opportunities/{id}/dial` - **NEW** Initiate AI voice call (MOCK - moves to stage based on simulated outcome)
 
 ### Contacts & Dashboard
 - `GET /api/contacts` - Get all contacts for brand

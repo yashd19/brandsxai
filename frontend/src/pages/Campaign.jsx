@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, X, ArrowLeft, Phone, Mail, Building2, User, MessageSquare, Calendar, Trash2, Search, Filter, ArrowUpDown, LayoutGrid, List, Settings, Clock, Download, Play, FileText, ChevronDown, Upload, Zap } from 'lucide-react';
+import { Plus, X, ArrowLeft, Phone, Mail, Building2, User, MessageSquare, Calendar, Trash2, Search, Filter, ArrowUpDown, LayoutGrid, List, Settings, Clock, Download, Play, FileText, ChevronDown, Upload, Zap, PhoneCall, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import './Campaign.css';
 
 const STAGES = [
@@ -28,6 +29,7 @@ const Campaign = () => {
   const [allOpportunities, setAllOpportunities] = useState([]);
   const [csvData, setCsvData] = useState([]);
   const [importStatus, setImportStatus] = useState(null);
+  const [dialingOppId, setDialingOppId] = useState(null); // Track which opportunity is being dialed
 
   const [newCampaign, setNewCampaign] = useState({
     name: '', description: '', start_date: '', end_date: '', target_audience: '', call_script: ''
@@ -181,6 +183,44 @@ const Campaign = () => {
   const handleTriggerAICalls = async () => {
     // Placeholder for AI calling integration
     alert('AI Calling feature will be integrated soon. This will trigger automated calls for all leads in the Dialing stage.');
+  };
+
+  // Handle single AI call for one opportunity
+  const handleDialSingle = async (e, opp) => {
+    e.stopPropagation(); // Prevent card click
+    
+    if (!opp.phone) {
+      toast.error('No phone number available for this contact');
+      return;
+    }
+
+    setDialingOppId(opp.id);
+    toast.info(`Initiating AI call to ${opp.name}...`);
+
+    try {
+      // TODO: Replace with actual AI calling service integration
+      // This is a placeholder that simulates an AI call
+      const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/opportunities/${opp.id}/dial`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: opp.phone })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(`Call completed for ${opp.name}`);
+        // Refresh campaign data to see updated stage
+        fetchCampaignDetails(selectedCampaign.id);
+      } else {
+        const error = await res.json();
+        toast.error(error.detail || 'Failed to initiate call');
+      }
+    } catch (err) {
+      console.error('Error dialing:', err);
+      toast.error('Failed to connect. AI calling service not configured.');
+    } finally {
+      setDialingOppId(null);
+    }
   };
 
   const handleDragStart = (e, opp, stage) => {
@@ -644,6 +684,28 @@ const Campaign = () => {
                       <p>No call summary available</p>
                       <span>AI-generated summary will appear here after call analysis</span>
                     </div>
+                  )}
+                  
+                  {/* AI Dial Button - Only show for Dialing stage */}
+                  {showOpportunityDetail.stage === 'dialing' && (
+                    <button
+                      className={`dial-ai-btn-modal ${dialingOppId === showOpportunityDetail.id ? 'dialing' : ''}`}
+                      onClick={(e) => handleDialSingle(e, showOpportunityDetail)}
+                      disabled={dialingOppId !== null}
+                      data-testid={`dial-modal-btn-${showOpportunityDetail.id}`}
+                    >
+                      {dialingOppId === showOpportunityDetail.id ? (
+                        <>
+                          <Loader2 size={18} className="spin" />
+                          <span>AI is calling...</span>
+                        </>
+                      ) : (
+                        <>
+                          <PhoneCall size={18} />
+                          <span>Dial with AI</span>
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
 
