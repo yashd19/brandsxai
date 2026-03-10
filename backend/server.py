@@ -60,7 +60,7 @@ def init_mysql_tables(connection):
     """Initialize all MySQL tables"""
     try:
         with connection.cursor() as cursor:
-            # Admins table (BrandsX AI employees)
+            # Admins table (BrandsXAI employees)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS brandsxai_admins (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -200,7 +200,7 @@ def init_mysql_tables(connection):
                     "INSERT INTO brandsxai_admins (username, email, password_hash) VALUES (%s, %s, %s)",
                     ('madoveradmin', 'admin@madoverai.com', password_hash)
                 )
-                logger.info("Created default BrandsX AI admin")
+                logger.info("Created default BrandsXAI admin")
             
             # Insert default features if not exists
             cursor.execute("SELECT id FROM brandsxai_features WHERE name = 'Voice AI'")
@@ -309,7 +309,7 @@ async def init_mongodb_collections():
         logger.error(f"MongoDB initialization error: {e}")
 
 # Create the main app
-app = FastAPI(title="BrandsX AI API", version="1.0.0")
+app = FastAPI(title="BrandsXAI API", version="1.0.0")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
@@ -375,7 +375,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 @api_router.post("/admin/login")
 async def admin_login(request: LoginRequest):
-    """BrandsX AI Admin login"""
+    """BrandsXAI Admin login"""
     mysql_conn = try_mysql_connection()
     if mysql_conn:
         try:
@@ -1159,94 +1159,103 @@ async def update_opportunity(opportunity_id: int, update: OpportunityUpdate, cur
 class DialRequest(BaseModel):
     phone: str
 
+# AI Voice Calling API Configuration
+AI_CALL_API_URL = "http://16.16.213.64:8000/api/call"
+AI_CALL_API_KEY = "kj-neha-2024-xK9p"
+
+def validate_phone_number(phone: str) -> tuple[bool, str]:
+    """Validate phone number format - must be 10 digits (excluding country code)"""
+    import re
+    # Remove all non-digit characters except + at the start
+    cleaned = re.sub(r'[^\d+]', '', phone)
+    
+    # Check if it has country code (+91 or 91) and 10 digit number
+    if cleaned.startswith('+91'):
+        digits = cleaned[3:]  # Remove +91
+    elif cleaned.startswith('91') and len(cleaned) >= 12:
+        digits = cleaned[2:]  # Remove 91
+    else:
+        digits = cleaned.lstrip('+')  # Just the digits
+    
+    # Check if we have exactly 10 digits
+    if len(digits) == 10 and digits.isdigit():
+        # Format properly with country code
+        formatted = f"+91{digits}"
+        return True, formatted
+    
+    return False, "Phone number must be 10 digits (excluding country code)"
+
 @api_router.post("/opportunities/{opportunity_id}/dial")
 async def dial_opportunity(opportunity_id: int, dial_req: DialRequest, current_user: dict = Depends(get_current_user)):
-    """Initiate AI voice call to an opportunity - Placeholder for AI calling integration"""
+    """Initiate AI voice call to an opportunity using external AI calling service"""
     if not current_user or current_user.get('type') == 'admin':
         raise HTTPException(status_code=403, detail="User access required")
     
     brand_id = current_user.get('brand_id')
     
-    # TODO: Integrate with AI Voice Calling service (Bland.ai, Retell.ai, Vapi.ai, etc.)
-    # For now, this is a mock implementation that simulates a call
+    # Validate phone number
+    is_valid, result = validate_phone_number(dial_req.phone)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=result)
     
-    # Simulated AI call outcomes
-    import random
-    outcomes = ['interested', 'not_interested', 'callback', 'invalid_number']
-    weights = [0.4, 0.3, 0.2, 0.1]  # 40% interested, 30% not interested, etc.
+    formatted_phone = result
     
-    # Simulate call result
-    new_stage = random.choices(outcomes, weights=weights)[0]
+    # Call the AI Voice Calling API
+    import httpx
     
-    # Generate mock call summary based on outcome
-    summaries = {
-        'interested': "Customer expressed interest in the product. They requested more information about pricing and asked for a follow-up call next week. Positive tone throughout the conversation.",
-        'not_interested': "Customer indicated they are not interested at this time. They mentioned they recently purchased a similar product from a competitor.",
-        'callback': "Customer was busy and requested a callback. Best time to reach them is in the afternoon around 3 PM.",
-        'invalid_number': "Unable to connect - number appears to be disconnected or invalid."
-    }
-    
-    call_summary = summaries.get(new_stage, "Call completed.")
-    call_duration = random.randint(30, 300) if new_stage != 'invalid_number' else 0
-    
-    # Update the opportunity with call results
-    update_data = {
-        'stage': new_stage,
-        'call_summary': call_summary,
-        'call_duration': call_duration,
-        'call_outcome': new_stage,
-        'last_called_at': datetime.now(timezone.utc).isoformat(),
-        'updated_at': datetime.now(timezone.utc).isoformat()
-    }
-    
-    mysql_conn = try_mysql_connection()
-    if mysql_conn:
-        try:
-            with mysql_conn.cursor() as cursor:
-                set_clause = ", ".join([f"{k} = %s" for k in update_data.keys()])
-                values = list(update_data.values()) + [opportunity_id, brand_id]
-                cursor.execute(
-                    f"UPDATE brandsxai_opportunities SET {set_clause} WHERE id = %s AND brand_id = %s",
-                    values
-                )
-                mysql_conn.commit()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                AI_CALL_API_URL,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": AI_CALL_API_KEY
+                },
+                json={"phone_number": formatted_phone}
+            )
+            
+            if response.status_code == 200:
+                call_response = response.json()
                 
-                cursor.execute("SELECT * FROM brandsxai_opportunities WHERE id = %s", (opportunity_id,))
-                result = cursor.fetchone()
-                return {
-                    "success": True,
-                    "opportunity": result,
-                    "call_result": {
-                        "stage": new_stage,
-                        "summary": call_summary,
-                        "duration": call_duration
-                    },
-                    "db_source": "mysql",
-                    "note": "This is a MOCK response. Integrate with AI calling service for real calls."
-                }
-        except Exception as e:
-            logger.error(f"MySQL dial error: {e}")
-        finally:
-            mysql_conn.close()
-    
-    # MongoDB fallback
-    await mongo_db.brandsxai_opportunities.update_one(
-        {"id": opportunity_id, "brand_id": brand_id},
-        {"$set": update_data}
-    )
-    
-    opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id}, {"_id": 0})
-    return {
-        "success": True,
-        "opportunity": opp,
-        "call_result": {
-            "stage": new_stage,
-            "summary": call_summary,
-            "duration": call_duration
-        },
-        "db_source": "mongodb",
-        "note": "This is a MOCK response. Integrate with AI calling service for real calls."
-    }
+                if call_response.get('success'):
+                    # Call initiated successfully
+                    update_data = {
+                        'call_id': call_response.get('call_id'),
+                        'last_called_at': datetime.now(timezone.utc).isoformat(),
+                        'updated_at': datetime.now(timezone.utc).isoformat()
+                    }
+                    
+                    # Update MongoDB
+                    await mongo_db.brandsxai_opportunities.update_one(
+                        {"id": opportunity_id, "brand_id": brand_id},
+                        {"$set": update_data}
+                    )
+                    
+                    return {
+                        "success": True,
+                        "message": "Call initiated successfully",
+                        "call_id": call_response.get('call_id'),
+                        "room_name": call_response.get('room_name'),
+                        "phone_number": formatted_phone,
+                        "timestamp": call_response.get('timestamp')
+                    }
+                else:
+                    raise HTTPException(status_code=400, detail="AI service returned failure")
+            else:
+                error_detail = f"AI calling service error: HTTP {response.status_code}"
+                try:
+                    error_body = response.json()
+                    if 'detail' in error_body:
+                        error_detail = error_body['detail']
+                except:
+                    pass
+                raise HTTPException(status_code=502, detail=error_detail)
+                
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="AI calling service timeout - please try again")
+    except httpx.RequestError as e:
+        logger.error(f"AI call API request error: {e}")
+        raise HTTPException(status_code=502, detail="Failed to connect to AI calling service")
 
 @api_router.get("/contacts")
 async def get_all_contacts(current_user: dict = Depends(get_current_user)):
@@ -1359,7 +1368,7 @@ async def get_session_calls(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/")
 async def root():
-    return {"message": "BrandsX AI API", "version": "2.0.0"}
+    return {"message": "BrandsXAI API", "version": "2.0.0"}
 
 @api_router.get("/db-status")
 async def db_status():

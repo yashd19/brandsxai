@@ -104,6 +104,16 @@ const Campaign = () => {
 
   const handleCreateOpportunity = async (e) => {
     e.preventDefault();
+    
+    // Validate phone number if provided
+    if (newOpportunity.phone) {
+      const validation = validatePhoneNumber(newOpportunity.phone);
+      if (!validation.valid) {
+        toast.error(validation.error);
+        return;
+      }
+    }
+    
     try {
       const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/campaigns/${selectedCampaign.id}/opportunities`, {
         method: 'POST',
@@ -111,12 +121,17 @@ const Campaign = () => {
         body: JSON.stringify(newOpportunity)
       });
       if (res.ok) {
+        toast.success('Contact added successfully!');
         setShowCreateOpportunity(false);
         setNewOpportunity({ name: '', phone: '', email: '', business_name: '', notes: '' });
         fetchCampaignDetails(selectedCampaign.id);
+      } else {
+        const error = await res.json();
+        toast.error(error.detail || 'Failed to add contact');
       }
     } catch (err) {
       console.error('Error creating opportunity:', err);
+      toast.error('Failed to add contact');
     }
   };
 
@@ -186,6 +201,31 @@ const Campaign = () => {
   };
 
   // Handle single AI call for one opportunity
+  // Validate phone number - must be 10 digits
+  const validatePhoneNumber = (phone) => {
+    if (!phone) return { valid: false, error: 'No phone number provided' };
+    
+    // Remove all non-digit characters except + at the start
+    const cleaned = phone.replace(/[^\d+]/g, '');
+    
+    // Extract digits without country code
+    let digits;
+    if (cleaned.startsWith('+91')) {
+      digits = cleaned.slice(3);
+    } else if (cleaned.startsWith('91') && cleaned.length >= 12) {
+      digits = cleaned.slice(2);
+    } else {
+      digits = cleaned.replace(/^\+/, '');
+    }
+    
+    // Check if we have exactly 10 digits
+    if (digits.length !== 10 || !/^\d+$/.test(digits)) {
+      return { valid: false, error: 'Phone number must be 10 digits (excluding country code)' };
+    }
+    
+    return { valid: true, formatted: `+91${digits}` };
+  };
+
   const handleDialSingle = async (e, opp) => {
     e.stopPropagation(); // Prevent card click
     
@@ -194,30 +234,37 @@ const Campaign = () => {
       return;
     }
 
+    // Validate phone number
+    const validation = validatePhoneNumber(opp.phone);
+    if (!validation.valid) {
+      toast.error(validation.error);
+      return;
+    }
+
     setDialingOppId(opp.id);
     toast.info(`Initiating AI call to ${opp.name}...`);
 
     try {
-      // TODO: Replace with actual AI calling service integration
-      // This is a placeholder that simulates an AI call
       const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/opportunities/${opp.id}/dial`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: opp.phone })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        toast.success(`Call completed for ${opp.name}`);
-        // Refresh campaign data to see updated stage
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        toast.success(`Call initiated successfully to ${opp.name}!`, {
+          description: `Call ID: ${data.call_id}`
+        });
+        // Refresh campaign data
         fetchCampaignDetails(selectedCampaign.id);
       } else {
-        const error = await res.json();
-        toast.error(error.detail || 'Failed to initiate call');
+        toast.error(data.detail || 'There was an issue initiating the call');
       }
     } catch (err) {
       console.error('Error dialing:', err);
-      toast.error('Failed to connect. AI calling service not configured.');
+      toast.error('Failed to connect to AI calling service. Please try again.');
     } finally {
       setDialingOppId(null);
     }
@@ -854,12 +901,13 @@ const Campaign = () => {
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Phone</label>
+                    <label>Phone <span className="field-hint">(10 digits)</span></label>
                     <input
                       type="tel"
                       value={newOpportunity.phone}
                       onChange={e => setNewOpportunity({...newOpportunity, phone: e.target.value})}
-                      placeholder="+91 XXXXXXXXXX"
+                      placeholder="e.g., 9876543210 or +91 9876543210"
+                      pattern="[0-9+\s-]+"
                       data-testid="opportunity-phone-input"
                     />
                   </div>

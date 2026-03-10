@@ -67,7 +67,7 @@ const Login = () => {
         </Link>
 
         {/* Heading */}
-        <h2 className="login-title">Sign in to BrandsX AI</h2>
+        <h2 className="login-title">Sign in to BrandsXAI</h2>
         <p className="login-subtitle">Enter your credentials to continue</p>
 
         {/* Form */}
