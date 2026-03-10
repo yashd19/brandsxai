@@ -1,10 +1,10 @@
-# MadOver AI - Product Requirements Document
+# BrandsX AI - Product Requirements Document
 
 ## Project Overview
-MadOver AI is a multi-tenant SaaS platform for Voice AI calling campaigns. Features landing page, admin portal, and role-based dashboards.
+BrandsX AI is a multi-tenant SaaS platform for Voice AI calling campaigns. Features landing page, admin portal, and role-based dashboards.
 
 ## User Personas
-1. **MadOver AI Admins**: Manage brands, users, and feature access
+1. **BrandsX AI Admins**: Manage brands, users, and feature access
 2. **Brand Users**: Access features assigned to their brand
 
 ## Database Schema (brandsxai_ prefix)

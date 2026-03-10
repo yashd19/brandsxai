@@ -53,7 +53,7 @@ const Contact = () => {
         </Link>
 
         {/* Heading */}
-        <h2 className="contact-title">Contact MadOver AI</h2>
+        <h2 className="contact-title">Contact BrandsX AI</h2>
         <p className="contact-subtitle">Tell us about your brand</p>
 
         {/* Form */}

@@ -60,7 +60,7 @@ def init_mysql_tables(connection):
     """Initialize all MySQL tables"""
     try:
         with connection.cursor() as cursor:
-            # Admins table (MadOver AI employees)
+            # Admins table (BrandsX AI employees)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS brandsxai_admins (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -200,7 +200,7 @@ def init_mysql_tables(connection):
                     "INSERT INTO brandsxai_admins (username, email, password_hash) VALUES (%s, %s, %s)",
                     ('madoveradmin', 'admin@madoverai.com', password_hash)
                 )
-                logger.info("Created default MadOver AI admin")
+                logger.info("Created default BrandsX AI admin")
             
             # Insert default features if not exists
             cursor.execute("SELECT id FROM brandsxai_features WHERE name = 'Voice AI'")
@@ -309,7 +309,7 @@ async def init_mongodb_collections():
         logger.error(f"MongoDB initialization error: {e}")
 
 # Create the main app
-app = FastAPI(title="MadOver AI API", version="1.0.0")
+app = FastAPI(title="BrandsX AI API", version="1.0.0")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
@@ -375,7 +375,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 @api_router.post("/admin/login")
 async def admin_login(request: LoginRequest):
-    """MadOver AI Admin login"""
+    """BrandsX AI Admin login"""
     mysql_conn = try_mysql_connection()
     if mysql_conn:
         try:
@@ -1359,7 +1359,7 @@ async def get_session_calls(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/")
 async def root():
-    return {"message": "MadOver AI API", "version": "2.0.0"}
+    return {"message": "BrandsX AI API", "version": "2.0.0"}
 
 @api_router.get("/db-status")
 async def db_status():

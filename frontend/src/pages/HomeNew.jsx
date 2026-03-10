@@ -14,7 +14,7 @@ const HomeNew = () => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // Product cards SURROUNDING MadOver AI from all sides
+  // Product cards SURROUNDING BrandsX AI from all sides
   const productCards = [
     // TOP LEFT AREA
     {
@@ -158,7 +158,7 @@ const HomeNew = () => {
         <div className="top-banner">
           <div className="banner-content">
             <div className="banner-icon">📱</div>
-            <span>Download Mad Over AI app. Available on iOS & Android</span>
+            <span>Download BrandsX AI app. Available on iOS & Android</span>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -197,7 +197,7 @@ const HomeNew = () => {
 
           {/* Center Content */}
           <div className="hero-center">
-            <h1 className="hero-main-title">MadOver AI</h1>
+            <h1 className="hero-main-title">BrandsX AI</h1>
             
             <div className="hero-search-wrapper">
               <input
@@ -233,7 +233,7 @@ const HomeNew = () => {
         <div className="metrics-container">
           <div className="metrics-left">
             <h2 className="metrics-heading">
-              Millions trust MadOver AI<br />to deliver great value
+              Millions trust BrandsX AI<br />to deliver great value
             </h2>
           </div>
           <div className="metrics-right">
@@ -260,7 +260,7 @@ const HomeNew = () => {
       {/* Case Studies Section */}
       <section className="case-studies-section">
         <div className="case-studies-container">
-          <h2 className="case-studies-heading">Supercharge your<br/>business with <span className="highlight-purple">MadOver AI</span></h2>
+          <h2 className="case-studies-heading">Supercharge your<br/>business with <span className="highlight-purple">BrandsX AI</span></h2>
           
           <div className="case-studies-tabs">
             <button className="tab-button active">OEM</button>
@@ -295,8 +295,8 @@ const HomeNew = () => {
       <footer className="site-footer">
         <div className="footer-main">
           <div className="footer-brand">
-            <h3 className="footer-logo">MadOver AI</h3>
-            <p className="footer-tagline">MadOver AI is the next step on our mission to make AI better for everyone.</p>
+            <h3 className="footer-logo">BrandsX AI</h3>
+            <p className="footer-tagline">BrandsX AI is the next step on our mission to make AI better for everyone.</p>
             <div className="footer-apps">
               <a href="#" className="app-badge">
                 <img src="https://upload.wikimedia.org/wikipedia/commons/3/3c/Download_on_the_App_Store_Badge.svg" alt="Download on App Store" />
@@ -332,8 +332,8 @@ const HomeNew = () => {
         </div>
         
         <div className="footer-bottom">
-          <span className="footer-powered">Powered by <strong>MadOver AI</strong></span>
-          <span className="footer-copyright">© MadOver AI Inc. 2026</span>
+          <span className="footer-powered">Powered by <strong>BrandsX AI</strong></span>
+          <span className="footer-copyright">© BrandsX AI Inc. 2026</span>
         </div>
       </footer>
     </div>

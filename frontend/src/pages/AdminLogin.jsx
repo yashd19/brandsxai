@@ -45,7 +45,7 @@ const AdminLogin = () => {
         <div className="admin-login-logo">
           <Shield size={48} />
         </div>
-        <h1>MadOver AI Admin</h1>
+        <h1>BrandsX AI Admin</h1>
         <p>Sign in to manage users and brands</p>
 
         <form onSubmit={handleSubmit}>

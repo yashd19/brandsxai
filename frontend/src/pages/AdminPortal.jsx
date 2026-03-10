@@ -150,7 +150,7 @@ const AdminPortal = () => {
       <header className="admin-header">
         <div className="admin-logo">
           <Shield size={24} />
-          <span>MadOver AI Admin</span>
+          <span>BrandsX AI Admin</span>
         </div>
         <button className="logout-btn" onClick={handleLogout}>
           <LogOut size={18} />
