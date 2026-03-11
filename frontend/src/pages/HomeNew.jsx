@@ -73,9 +73,10 @@ const HomeNew = () => {
     // MIDDLE RIGHT - AT LOGO HEIGHT
     {
       id: 6,
-      name: 'Coffee Mug Premium',
-      image: 'https://images.unsplash.com/photo-1548287914-44c700af2ed5?w=400&q=80',
-      rating: 4,
+      name: 'InvenIQ AI',
+      subtitle: 'Inventory',
+      image: 'https://static.prod-images.emergentagent.com/jobs/1df6c7d9-506b-404c-8779-31408a5b4b9f/images/074c76807274742e975a5d8de23def9fe463a88f2efc7554d98442a83a38861b.png',
+      rating: 5,
       reviews: '91',
       position: { top: '38%', right: '3%' }, // Right side at logo height
       zIndex: 4
@@ -93,9 +94,10 @@ const HomeNew = () => {
     },
     {
       id: 9,
-      name: 'Gourmet Collection',
-      image: 'https://images.unsplash.com/photo-1685384338018-1774719d5b69?w=400&q=80',
-      rating: 5,
+      name: 'Bridal Vision AI',
+      subtitle: 'Retail Tech',
+      image: 'https://static.prod-images.emergentagent.com/jobs/1df6c7d9-506b-404c-8779-31408a5b4b9f/images/102df9f80a7fe22d1451420f6897bef821030b62732d906de3b9cfa1a1496949.png',
+      rating: 4,
       reviews: '178',
       position: { bottom: '8%', left: '24%' },
       zIndex: 5
@@ -113,8 +115,9 @@ const HomeNew = () => {
     },
     {
       id: 11,
-      name: 'Designer Bag',
-      image: 'https://images.unsplash.com/photo-1540749046540-b7d8f98c7e4c?w=400&q=80',
+      name: 'JewelMatch AI',
+      subtitle: 'Customer Experience',
+      image: 'https://static.prod-images.emergentagent.com/jobs/1df6c7d9-506b-404c-8779-31408a5b4b9f/images/1dc1b2a53f7548faa71f7c108e08be830ba8f7525006a1998e5b82a1c89f04b4.png',
       rating: 5,
       reviews: '324',
       position: { bottom: '8%', right: '24%' },
