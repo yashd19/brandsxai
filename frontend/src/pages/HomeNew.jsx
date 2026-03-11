@@ -40,8 +40,9 @@ const HomeNew = () => {
     // TOP RIGHT AREA
     {
       id: 3,
-      name: 'White Sneakers Collection',
-      image: 'https://images.unsplash.com/photo-1625860191460-10a66c7384fb?w=400&q=80',
+      name: 'Reporting AI',
+      subtitle: 'Finance',
+      image: 'https://static.prod-images.emergentagent.com/jobs/1df6c7d9-506b-404c-8779-31408a5b4b9f/images/c7b4328c87ffebf9edcd84180c604eade32d936d831b60c3dff7c878f04c5532.png',
       rating: 5,
       reviews: '89',
       position: { top: '10%', right: '6%' },
