@@ -30,7 +30,7 @@ const HomeNew = () => {
       id: 2,
       name: 'Avatar AI',
       subtitle: 'Marketing',
-      image: 'https://static.prod-images.emergentagent.com/jobs/1df6c7d9-506b-404c-8779-31408a5b4b9f/images/db3b94eb04125d87b3c615c2e5f5fd6665af2ddaf37a2018cb1faf881c91b8ab.png',
+      image: 'https://static.prod-images.emergentagent.com/jobs/1df6c7d9-506b-404c-8779-31408a5b4b9f/images/4921b9b04ce88c6650c3003bbfd6a91f45cb46e593646a1bd893a316a583b099.png',
       rating: 5,
       reviews: '156',
       position: { top: '6%', left: '24%' },
@@ -51,7 +51,7 @@ const HomeNew = () => {
       id: 4,
       name: 'Bravo AI',
       subtitle: 'AI Sales Agent',
-      image: 'https://static.prod-images.emergentagent.com/jobs/1df6c7d9-506b-404c-8779-31408a5b4b9f/images/314931619929fa35cf1046053f9b5a99c1dadd6a4b07bb081fb1204479bcb09b.png',
+      image: 'https://customer-assets.emergentagent.com/job_1df6c7d9-506b-404c-8779-31408a5b4b9f/artifacts/6iauua7w_image.png',
       rating: 5,
       reviews: '234',
       position: { top: '6%', right: '24%' },
@@ -189,8 +189,9 @@ const HomeNew = () => {
                 <div className="product-info">
                   <h3 className="product-name">{product.name}</h3>
                   <div className="product-rating">
+                    {product.subtitle && <span className="product-subtitle">{product.subtitle}</span>}
                     <span className="stars">{renderStars(product.rating)}</span>
-                    <span className="reviews">{product.subtitle || `(${product.reviews})`}</span>
+                    {!product.subtitle && <span className="reviews">({product.reviews})</span>}
                   </div>
                 </div>
               </div>
