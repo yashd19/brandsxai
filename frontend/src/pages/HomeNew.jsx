@@ -85,12 +85,14 @@ const HomeNew = () => {
     // BOTTOM LEFT AREA
     {
       id: 8,
-      name: 'Organic Dark Chocolate B...',
-      image: 'https://images.unsplash.com/photo-1760307244852-190a6c5d2a5f?w=400&q=80',
+      name: 'Settle AI',
+      subtitle: 'Fintech',
+      image: 'https://static.prod-images.emergentagent.com/jobs/1df6c7d9-506b-404c-8779-31408a5b4b9f/images/2a8cfb7ce638e04974dbf9f2916d814891b062e14206052aae339a6c17651358.png',
       rating: 5,
       reviews: '52',
       position: { bottom: '12%', left: '6%' },
-      zIndex: 7
+      zIndex: 7,
+      link: '/settle-ai'
     },
     {
       id: 9,
@@ -176,30 +178,49 @@ const HomeNew = () => {
         <div className="hero-wrapper">
           {/* Floating Product Cards */}
           <div className="products-container">
-            {productCards.map((product, index) => (
-              <div
-                key={product.id}
-                className={`product-card ${product.size || ''}`}
-                style={{
-                  ...product.position,
-                  zIndex: product.zIndex,
-                  transform: `translate(${mousePosition.x * 0.008 * (index % 2 === 0 ? 1 : -1)}px, ${mousePosition.y * 0.008 * (index % 3 === 0 ? 1 : -1)}px)`,
-                  animationDelay: `${index * 0.15}s`
-                }}
-              >
-                <div className="product-image-wrapper">
-                  <img src={product.image} alt={product.name} className="product-image" />
-                </div>
-                <div className="product-info">
-                  <h3 className="product-name">{product.name}</h3>
-                  <div className="product-rating">
-                    {product.subtitle && <span className="product-subtitle">{product.subtitle}</span>}
-                    <span className="stars">{renderStars(product.rating)}</span>
-                    {!product.subtitle && <span className="reviews">({product.reviews})</span>}
+            {productCards.map((product, index) => {
+              const cardContent = (
+                <>
+                  <div className="product-image-wrapper">
+                    <img src={product.image} alt={product.name} className="product-image" />
                   </div>
+                  <div className="product-info">
+                    <h3 className="product-name">{product.name}</h3>
+                    <div className="product-rating">
+                      {product.subtitle && <span className="product-subtitle">{product.subtitle}</span>}
+                      <span className="stars">{renderStars(product.rating)}</span>
+                      {!product.subtitle && <span className="reviews">({product.reviews})</span>}
+                    </div>
+                  </div>
+                </>
+              );
+              
+              const cardStyle = {
+                ...product.position,
+                zIndex: product.zIndex,
+                transform: `translate(${mousePosition.x * 0.008 * (index % 2 === 0 ? 1 : -1)}px, ${mousePosition.y * 0.008 * (index % 3 === 0 ? 1 : -1)}px)`,
+                animationDelay: `${index * 0.15}s`
+              };
+              
+              return product.link ? (
+                <Link
+                  key={product.id}
+                  to={product.link}
+                  className={`product-card ${product.size || ''}`}
+                  style={cardStyle}
+                >
+                  {cardContent}
+                </Link>
+              ) : (
+                <div
+                  key={product.id}
+                  className={`product-card ${product.size || ''}`}
+                  style={cardStyle}
+                >
+                  {cardContent}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Center Content */}

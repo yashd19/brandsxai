@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import AdminLogin from "./pages/AdminLogin";
 import AdminPortal from "./pages/AdminPortal";
 import Dashboard from "./pages/Dashboard";
+import SettleAI from "./pages/SettleAI";
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
           <Route path="/case-study/:id" element={<CaseStudy />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/settle-ai" element={<SettleAI />} />
           
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLogin />} />
