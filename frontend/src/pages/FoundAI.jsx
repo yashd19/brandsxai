@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import './FoundAI.css';
 
 const FoundAI = () => {
@@ -7,11 +8,14 @@ const FoundAI = () => {
     <div className="found-page">
       {/* NAV */}
       <nav className="found-nav">
-        <Link className="nav-logo" to="/">
+        <Link to="/" className="back-link">
+          <ArrowLeft size={20} />
+          <span>Back to BrandsXAI</span>
+        </Link>
+        <div className="nav-logo">
           <div className="nav-logo-dot"></div>
           Found AI
-        </Link>
-        <div className="nav-tag">GEO Agency</div>
+        </div>
         <ul className="nav-links">
           <li><a href="#why">Why GEO</a></li>
           <li><a href="#services">Services</a></li>
@@ -325,23 +329,33 @@ const FoundAI = () => {
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer className="found-footer" id="contact">
-        <div className="footer-brand">
-          <div className="footer-logo">
-            <div className="footer-logo-dot"></div>
-            Found AI
+      {/* FOOTER - BrandsXAI */}
+      <footer className="found-footer">
+        <div className="footer-content">
+          <div className="footer-brand">
+            <h3 className="footer-logo">BrandsXAI</h3>
+            <p className="footer-tagline">BrandsXAI is the next step on our mission to make AI better for everyone.</p>
           </div>
-          <div className="footer-tagline">Be Found in the AI Era</div>
+          
+          <div className="footer-links-grid">
+            <div className="footer-col">
+              <h4>FoundAI</h4>
+              <a href="#why">Why GEO</a>
+              <a href="#services">Services</a>
+              <a href="#process">Process</a>
+            </div>
+            <div className="footer-col">
+              <h4>BrandsXAI</h4>
+              <Link to="/">Home</Link>
+              <Link to="/about">About Us</Link>
+              <Link to="/contact">Contact</Link>
+            </div>
+          </div>
         </div>
-        <ul className="footer-links">
-          <li><a href="#why">Why GEO</a></li>
-          <li><a href="#services">Services</a></li>
-          <li><a href="#process">Process</a></li>
-          <li><Link to="/contact">Contact</Link></li>
-        </ul>
-        <div className="footer-right">
-          <div className="footer-copy">© 2026 Found AI. All rights reserved.</div>
+        
+        <div className="footer-bottom">
+          <span className="footer-powered">Powered by <strong>BrandsXAI</strong></span>
+          <span className="footer-copyright">© BrandsXAI Inc. 2026</span>
         </div>
       </footer>
     </div>
