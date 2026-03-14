@@ -1,0 +1,1062 @@
+/* BravoAI Page - Using BrandsXAI lime color instead of red */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:ital,wght@0,300;0,400;0,500;0,600;1,300;1,600&family=Barlow+Condensed:wght@300;400;500;600;700&display=swap');
+
+.bravo-page {
+  --accent: #C8F135;
+  --accent-dim: #A0C420;
+  --accent-glow: rgba(200,241,53,.12);
+  --orange: #E8D535;
+  --white: #F5F2EE;
+  --off: #B0ABA4;
+  --muted: #6B6560;
+  --black: #080706;
+  --panel: #0F0D0C;
+  --card: #141210;
+  --border: rgba(200,241,53,.15);
+  --border-dim: rgba(245,242,238,.06);
+
+  font-family: 'Barlow', sans-serif;
+  background: var(--black);
+  color: var(--white);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* ── NOISE ── */
+.bravo-page::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+  opacity: .5;
+}
+
+/* ── NAV ── */
+.bravo-page .bravo-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.2rem 4rem;
+  background: rgba(8,7,6,.95);
+  border-bottom: 1px solid var(--border-dim);
+  backdrop-filter: blur(8px);
+}
+
+.bravo-page .back-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-family: 'Barlow', sans-serif;
+  transition: opacity 0.2s;
+}
+
+.bravo-page .back-link:hover {
+  opacity: 0.8;
+}
+
+.bravo-page .nav-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.8rem;
+  letter-spacing: .12em;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.bravo-page .nav-logo-accent {
+  color: var(--accent);
+}
+
+.bravo-page .nav-links {
+  display: flex;
+  gap: 2.5rem;
+  list-style: none;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+}
+
+.bravo-page .nav-links a {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .8rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--off);
+  text-decoration: none;
+  transition: color .2s;
+}
+
+.bravo-page .nav-links a:hover {
+  color: var(--white);
+}
+
+.bravo-page .nav-cta {
+  background: var(--accent) !important;
+  color: var(--black) !important;
+  padding: .45rem 1.4rem !important;
+  font-weight: 600 !important;
+  letter-spacing: .12em !important;
+}
+
+.bravo-page .nav-cta:hover {
+  background: var(--accent-dim) !important;
+}
+
+/* ── HERO ── */
+.bravo-page .hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 4rem 5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.bravo-page .hero-slash {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(108deg, var(--black) 55%, #0A1207 55.1%);
+}
+
+.bravo-page .hero-slash::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 45%;
+  background: radial-gradient(ellipse 80% 80% at 80% 50%, rgba(200,241,53,.1) 0%, transparent 70%);
+}
+
+.bravo-page .hero-bg-text {
+  position: absolute;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(14rem, 22vw, 26rem);
+  letter-spacing: -.02em;
+  color: rgba(200,241,53,.04);
+  top: 50%;
+  left: -2rem;
+  transform: translateY(-50%);
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.bravo-page .hero-vlines {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  gap: 0;
+}
+
+.bravo-page .vline {
+  flex: 1;
+  border-right: 1px solid rgba(200,241,53,.04);
+}
+
+.bravo-page .hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 900px;
+}
+
+.bravo-page .hero-pre {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .8rem;
+  letter-spacing: .4em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  animation: fade-up .6s ease both;
+}
+
+.bravo-page .hero-pre::before {
+  content: '';
+  width: 30px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.bravo-page .hero h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(5rem, 12vw, 13rem);
+  line-height: .9;
+  letter-spacing: .02em;
+  margin-bottom: 1.5rem;
+  animation: fade-up .7s .1s ease both;
+}
+
+.bravo-page .hero h1 .word-bravo {
+  color: var(--white);
+}
+
+.bravo-page .hero h1 .word-ai {
+  color: var(--accent);
+}
+
+.bravo-page .hero h1 .word-outline {
+  -webkit-text-stroke: 2px rgba(245,242,238,.2);
+  color: transparent;
+}
+
+.bravo-page .hero-sub-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 3rem;
+  animation: fade-up .7s .2s ease both;
+}
+
+.bravo-page .hero-tagline {
+  font-size: clamp(1rem, 1.8vw, 1.3rem);
+  font-weight: 300;
+  line-height: 1.65;
+  color: var(--off);
+  max-width: 520px;
+}
+
+.bravo-page .hero-tagline strong {
+  color: var(--white);
+  font-weight: 600;
+}
+
+.bravo-page .hero-ctas {
+  display: flex;
+  gap: 1rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.bravo-page .btn-accent {
+  display: inline-flex;
+  align-items: center;
+  gap: .7rem;
+  padding: 1rem 2.4rem;
+  background: var(--accent);
+  color: var(--black);
+  text-decoration: none;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .85rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  font-weight: 600;
+  transition: background .25s, transform .2s;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 100%, 10px 100%);
+}
+
+.bravo-page .btn-accent:hover {
+  background: var(--accent-dim);
+  transform: translateY(-2px);
+}
+
+.bravo-page .btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: .7rem;
+  padding: 1rem 2.4rem;
+  border: 1px solid rgba(200,241,53,.4);
+  color: var(--accent);
+  text-decoration: none;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .85rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  font-weight: 500;
+  transition: border-color .25s, background .25s;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 100%, 10px 100%);
+}
+
+.bravo-page .btn-ghost:hover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.bravo-page .hero-stats-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  border-top: 1px solid var(--border-dim);
+  background: rgba(8,7,6,.8);
+  backdrop-filter: blur(4px);
+}
+
+.bravo-page .stat-block {
+  flex: 1;
+  padding: 1.2rem 2rem;
+  border-right: 1px solid var(--border-dim);
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+
+.bravo-page .stat-block:last-child {
+  border-right: none;
+}
+
+.bravo-page .stat-n {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2rem;
+  letter-spacing: .05em;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.bravo-page .stat-l {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .68rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── DIVIDER ── */
+.bravo-page .slash-divider {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--orange), transparent);
+  opacity: .4;
+}
+
+/* ── SECTIONS ── */
+.bravo-page section {
+  padding: 7rem 4rem;
+  position: relative;
+  z-index: 2;
+}
+
+.bravo-page .sec-eyebrow {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .75rem;
+  letter-spacing: .35em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+}
+
+.bravo-page .sec-eyebrow::before {
+  content: '▶';
+  font-size: .5rem;
+}
+
+.bravo-page .sec-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  line-height: .95;
+  letter-spacing: .03em;
+  margin-bottom: 1.2rem;
+  color: var(--white);
+}
+
+.bravo-page .sec-title em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.bravo-page .sec-desc {
+  font-size: .95rem;
+  font-weight: 300;
+  line-height: 1.8;
+  color: var(--off);
+  max-width: 540px;
+  margin-bottom: 4rem;
+}
+
+/* ── WHAT IT DOES ── */
+.bravo-page .what {
+  background: var(--black);
+}
+
+.bravo-page .what-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 1px;
+  background: var(--border-dim);
+  border: 1px solid var(--border-dim);
+  margin-top: 4rem;
+}
+
+.bravo-page .what-card {
+  background: var(--card);
+  padding: 3rem 2.5rem;
+  position: relative;
+  overflow: hidden;
+  transition: background .3s;
+}
+
+.bravo-page .what-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--orange));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .4s ease;
+}
+
+.bravo-page .what-card:hover {
+  background: #1A1A10;
+}
+
+.bravo-page .what-card:hover::before {
+  transform: scaleX(1);
+}
+
+.bravo-page .what-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 5rem;
+  color: rgba(200,241,53,.06);
+  line-height: 1;
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  letter-spacing: .05em;
+}
+
+.bravo-page .what-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 2rem;
+  background: var(--accent-glow);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bravo-page .what-icon svg {
+  width: 22px;
+  height: 22px;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  fill: none;
+}
+
+.bravo-page .what-card h3 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.6rem;
+  letter-spacing: .05em;
+  margin-bottom: .6rem;
+  color: var(--white);
+}
+
+.bravo-page .what-tag {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .65rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.bravo-page .what-card p {
+  font-size: .85rem;
+  font-weight: 300;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.bravo-page .what-outcome {
+  margin-top: 1.8rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--border-dim);
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .72rem;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--off);
+}
+
+.bravo-page .what-outcome::before {
+  content: '';
+  width: 20px;
+  height: 1px;
+  background: var(--accent);
+}
+
+/* ── HOW IT WORKS ── */
+.bravo-page .how {
+  background: var(--panel);
+}
+
+.bravo-page .flow-track {
+  margin-top: 4rem;
+  position: relative;
+}
+
+.bravo-page .flow-track::before {
+  content: '';
+  position: absolute;
+  left: 28px;
+  top: 28px;
+  bottom: 28px;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--accent), var(--orange), transparent);
+  opacity: .3;
+}
+
+.bravo-page .flow-item {
+  display: flex;
+  gap: 2.5rem;
+  align-items: flex-start;
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--border-dim);
+  position: relative;
+}
+
+.bravo-page .flow-dot {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.3rem;
+  color: var(--accent);
+  position: relative;
+  z-index: 1;
+  transition: background .3s;
+}
+
+.bravo-page .flow-item:hover .flow-dot {
+  background: var(--accent-glow);
+}
+
+.bravo-page .flow-body h4 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.4rem;
+  letter-spacing: .05em;
+  margin-bottom: .4rem;
+  color: var(--white);
+}
+
+.bravo-page .flow-body p {
+  font-size: .85rem;
+  font-weight: 300;
+  line-height: 1.8;
+  color: var(--muted);
+  max-width: 620px;
+}
+
+.bravo-page .flow-badge {
+  margin-top: .6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .65rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: .25rem .8rem;
+  border: 1px solid var(--border);
+  background: var(--accent-glow);
+}
+
+/* ── LEAD QUALIFICATION ── */
+.bravo-page .qualify {
+  background: var(--black);
+}
+
+.bravo-page .qualify-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 1px;
+  background: var(--border-dim);
+  margin-top: 4rem;
+  border: 1px solid var(--border-dim);
+}
+
+.bravo-page .q-bucket {
+  background: var(--card);
+  padding: 2.8rem 2.2rem;
+  position: relative;
+  overflow: hidden;
+  transition: background .3s;
+}
+
+.bravo-page .q-bucket:hover {
+  background: #1A1A10;
+}
+
+.bravo-page .q-bucket::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.bravo-page .q-bucket.hot::after {
+  background: linear-gradient(90deg, var(--accent), var(--orange));
+}
+
+.bravo-page .q-bucket.warm::after {
+  background: linear-gradient(90deg, #E8A020, #F5C842);
+}
+
+.bravo-page .q-bucket.nurture::after {
+  background: linear-gradient(90deg, #3A7BD5, #6BA3E8);
+}
+
+.bravo-page .q-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .3rem .9rem;
+  border-radius: 2px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .65rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 1.8rem;
+}
+
+.bravo-page .q-bucket.hot .q-signal {
+  background: rgba(200,241,53,.12);
+  color: var(--accent);
+  border: 1px solid rgba(200,241,53,.3);
+}
+
+.bravo-page .q-bucket.warm .q-signal {
+  background: rgba(232,160,32,.1);
+  color: #E8A020;
+  border: 1px solid rgba(232,160,32,.25);
+}
+
+.bravo-page .q-bucket.nurture .q-signal {
+  background: rgba(58,123,213,.1);
+  color: #6BA3E8;
+  border: 1px solid rgba(58,123,213,.25);
+}
+
+.bravo-page .q-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  animation: q-pulse 1.8s ease-in-out infinite;
+}
+
+.bravo-page .q-bucket.hot .q-dot {
+  background: var(--accent);
+}
+
+.bravo-page .q-bucket.warm .q-dot {
+  background: #E8A020;
+}
+
+.bravo-page .q-bucket.nurture .q-dot {
+  background: #6BA3E8;
+}
+
+@keyframes q-pulse {
+  0%,100% { opacity: 1; }
+  50% { opacity: .3; }
+}
+
+.bravo-page .q-bucket h3 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.8rem;
+  letter-spacing: .05em;
+  margin-bottom: .3rem;
+  color: var(--white);
+}
+
+.bravo-page .q-sub {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .68rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 1.2rem;
+}
+
+.bravo-page .q-bucket p {
+  font-size: .82rem;
+  font-weight: 300;
+  line-height: 1.8;
+  color: var(--muted);
+  margin-bottom: 1.5rem;
+}
+
+.bravo-page .q-action {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .72rem;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.bravo-page .q-bucket.hot .q-action {
+  color: var(--accent);
+}
+
+.bravo-page .q-bucket.warm .q-action {
+  color: #E8A020;
+}
+
+.bravo-page .q-bucket.nurture .q-action {
+  color: #6BA3E8;
+}
+
+.bravo-page .q-action::before {
+  content: '▶';
+  font-size: .5rem;
+}
+
+/* ── CALL SIMULATION ── */
+.bravo-page .callsim {
+  background: var(--panel);
+}
+
+.bravo-page .call-wrap {
+  max-width: 700px;
+  margin: 4rem auto 0;
+}
+
+.bravo-page .call-window {
+  border: 1px solid var(--border-dim);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.bravo-page .call-topbar {
+  background: #1A1A10;
+  padding: .9rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.bravo-page .call-live {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .7rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.bravo-page .call-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: q-pulse 1.2s ease-in-out infinite;
+}
+
+.bravo-page .call-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .68rem;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.bravo-page .call-body {
+  padding: 2rem;
+}
+
+.bravo-page .call-line {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+  align-items: flex-start;
+}
+
+.bravo-page .call-who {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .62rem;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  flex-shrink: 0;
+  width: 70px;
+  padding-top: .2rem;
+}
+
+.bravo-page .call-who.prospect {
+  color: var(--muted);
+}
+
+.bravo-page .call-text {
+  font-size: .85rem;
+  font-weight: 300;
+  line-height: 1.7;
+  color: var(--off);
+  background: rgba(200,241,53,.04);
+  border-left: 2px solid rgba(200,241,53,.25);
+  padding: .7rem 1rem;
+  flex: 1;
+}
+
+.bravo-page .call-text.agent {
+  border-left-color: var(--accent);
+}
+
+.bravo-page .call-result {
+  margin-top: 1.5rem;
+  padding: 1rem 1.2rem;
+  background: rgba(200,241,53,.06);
+  border: 1px solid rgba(200,241,53,.2);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: .75rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+}
+
+.bravo-page .call-result::before {
+  content: '▶';
+  font-size: .6rem;
+}
+
+/* ── WHO IT'S FOR ── */
+.bravo-page .who {
+  background: var(--black);
+}
+
+.bravo-page .who-grid {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 1px;
+  background: var(--border-dim);
+  margin-top: 4rem;
+  border: 1px solid var(--border-dim);
+}
+
+.bravo-page .who-card {
+  background: var(--card);
+  padding: 2.2rem 2rem;
+  transition: background .3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.bravo-page .who-card:hover {
+  background: #1A1A10;
+}
+
+.bravo-page .who-card:hover .who-icon-wrap {
+  border-color: var(--accent);
+}
+
+.bravo-page .who-icon-wrap {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 1.2rem;
+  border: 1px solid var(--border-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .3s;
+}
+
+.bravo-page .who-icon-wrap svg {
+  width: 20px;
+  height: 20px;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  fill: none;
+}
+
+.bravo-page .who-card h4 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: .06em;
+  margin-bottom: .5rem;
+  color: var(--white);
+}
+
+.bravo-page .who-card p {
+  font-size: .75rem;
+  font-weight: 300;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+/* ── FOOTER - BrandsXAI Style ── */
+.bravo-page .bravo-footer {
+  padding: 60px 40px 30px;
+  background: #050505;
+  position: relative;
+  z-index: 2;
+  border-top: 1px solid var(--border-dim);
+}
+
+.bravo-page .footer-content {
+  display: flex;
+  justify-content: space-between;
+  max-width: 1100px;
+  margin: 0 auto 40px;
+}
+
+.bravo-page .footer-brand {
+  max-width: 300px;
+}
+
+.bravo-page .footer-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 12px;
+}
+
+.bravo-page .footer-tagline {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.bravo-page .footer-links-grid {
+  display: flex;
+  gap: 80px;
+}
+
+.bravo-page .footer-col h4 {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 16px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.bravo-page .footer-col a {
+  display: block;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+  margin-bottom: 10px;
+  transition: color 0.2s;
+}
+
+.bravo-page .footer-col a:hover {
+  color: var(--accent);
+}
+
+.bravo-page .footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.bravo-page .footer-powered strong {
+  color: var(--accent);
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1024px) {
+  .bravo-page .who-grid {
+    grid-template-columns: repeat(2,1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .bravo-page .bravo-nav {
+    padding: 1.2rem 2rem;
+  }
+  .bravo-page .nav-links {
+    display: none;
+  }
+  .bravo-page .nav-logo {
+    display: none;
+  }
+  .bravo-page section {
+    padding: 5rem 2rem;
+  }
+  .bravo-page .hero {
+    padding: 0 2rem 9rem;
+  }
+  .bravo-page .hero h1 {
+    font-size: clamp(4rem, 18vw, 8rem);
+  }
+  .bravo-page .hero-sub-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+  .bravo-page .what-grid {
+    grid-template-columns: 1fr;
+  }
+  .bravo-page .qualify-grid {
+    grid-template-columns: 1fr;
+  }
+  .bravo-page .who-grid {
+    grid-template-columns: 1fr;
+  }
+  .bravo-page .footer-content {
+    flex-direction: column;
+    gap: 40px;
+  }
+  .bravo-page .footer-links-grid {
+    gap: 40px;
+  }
+  .bravo-page .footer-bottom {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+  .bravo-page .hero-stats-bar {
+    flex-wrap: wrap;
+  }
+  .bravo-page .stat-block {
+    flex: 0 0 50%;
+  }
+}

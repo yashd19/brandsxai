@@ -75,7 +75,21 @@ BrandsXAI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featur
   - All sections: Hero, Why GEO, Services, Process, GEO vs SEO, Who We Serve, Footer
   - Exact fonts (Syne, IBM Plex Mono, Instrument Serif) and colors (#C8F135 lime)
   - Grid background pattern and noise overlay
+  - Updated with BrandsXAI header (Back to main site) and footer
 - [x] **SettleAI Product Page** - Created from user-provided HTML file
+- [x] **BravoAI Product Page** - Voice AI sales agent landing page
+  - Converted from red color scheme to BrandsXAI lime color (#C8F135)
+  - All sections: Hero, What We Do, How It Works, Lead Qualifier, Call Simulation, Who It's For
+  - BrandsXAI header with "Back to main site" and footer
+- [x] **AdornIQ Product Page** - Jewellery AI Suite landing page
+  - Elegant gold color scheme preserved
+  - Three product cards: Bridal Vision AI, InvenIQ, JewelMatch AI
+  - BrandsXAI header with "Back to main site" and footer
+- [x] **Landing Page Card Links** - Connected product cards to their pages
+  - Bravo AI → /bravo-ai
+  - InvenIQ AI → /adorniq
+  - Bridal Vision AI → /adorniq
+  - JewelMatch AI → /adorniq
 
 ### Pending Tasks
 - [ ] **P1**: AI Post-Call Processing (webhooks for call summaries/recordings)
@@ -119,6 +133,10 @@ BrandsXAI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featur
 - `/app/frontend/src/pages/FoundAI.css` - FoundAI styles (exact replica)
 - `/app/frontend/src/pages/SettleAI.jsx` - SettleAI product page
 - `/app/frontend/src/pages/SettleAI.css` - SettleAI styles
+- `/app/frontend/src/pages/BravoAI.jsx` - BravoAI Voice AI page
+- `/app/frontend/src/pages/BravoAI.css` - BravoAI styles (lime color)
+- `/app/frontend/src/pages/AdornIQ.jsx` - AdornIQ Jewellery Suite page
+- `/app/frontend/src/pages/AdornIQ.css` - AdornIQ styles (gold color)
 
 ## AI Integration Structure (Ready for Implementation)
 When AI calling service is integrated:

@@ -10,6 +10,8 @@ import AdminPortal from "./pages/AdminPortal";
 import Dashboard from "./pages/Dashboard";
 import SettleAI from "./pages/SettleAI";
 import FoundAI from "./pages/FoundAI";
+import BravoAI from "./pages/BravoAI";
+import AdornIQ from "./pages/AdornIQ";
 
 function App() {
   return (
@@ -24,6 +26,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/settle-ai" element={<SettleAI />} />
           <Route path="/found-ai" element={<FoundAI />} />
+          <Route path="/bravo-ai" element={<BravoAI />} />
+          <Route path="/adorniq" element={<AdornIQ />} />
           
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLogin />} />

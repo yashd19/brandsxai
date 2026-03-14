@@ -58,7 +58,8 @@ const HomeNew = () => {
       rating: 5,
       reviews: '234',
       position: { top: '6%', right: '24%' },
-      zIndex: 6
+      zIndex: 6,
+      link: '/bravo-ai'
     },
     
     // MIDDLE LEFT - AT LOGO HEIGHT
@@ -81,7 +82,8 @@ const HomeNew = () => {
       rating: 5,
       reviews: '91',
       position: { top: '38%', right: '3%' }, // Right side at logo height
-      zIndex: 4
+      zIndex: 4,
+      link: '/adorniq'
     },
     
     // BOTTOM LEFT AREA
@@ -104,7 +106,8 @@ const HomeNew = () => {
       rating: 4,
       reviews: '178',
       position: { bottom: '8%', left: '24%' },
-      zIndex: 5
+      zIndex: 5,
+      link: '/adorniq'
     },
     
     // BOTTOM RIGHT AREA
@@ -125,7 +128,8 @@ const HomeNew = () => {
       rating: 5,
       reviews: '324',
       position: { bottom: '8%', right: '24%' },
-      zIndex: 4
+      zIndex: 4,
+      link: '/adorniq'
     }
   ];
 
