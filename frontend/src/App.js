@@ -9,6 +9,7 @@ import AdminLogin from "./pages/AdminLogin";
 import AdminPortal from "./pages/AdminPortal";
 import Dashboard from "./pages/Dashboard";
 import SettleAI from "./pages/SettleAI";
+import FoundAI from "./pages/FoundAI";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="/contact" element={<Contact />} />
           <Route path="/login" element={<Login />} />
           <Route path="/settle-ai" element={<SettleAI />} />
+          <Route path="/found-ai" element={<FoundAI />} />
           
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLogin />} />

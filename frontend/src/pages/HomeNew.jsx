@@ -19,12 +19,14 @@ const HomeNew = () => {
     // TOP LEFT AREA
     {
       id: 1,
-      name: 'Dream Night Serum with B...',
-      image: 'https://images.unsplash.com/photo-1770732766528-d0e9fd0df233?w=400&q=80',
+      name: 'FoundAI',
+      subtitle: 'SEO Optimisation',
+      image: 'https://static.prod-images.emergentagent.com/jobs/1df6c7d9-506b-404c-8779-31408a5b4b9f/images/0fe87e3569d2710ac22817b57de70663ed881305e76af0dc35b116e56252b425.png',
       rating: 5,
       reviews: '227',
       position: { top: '10%', left: '6%' },
-      zIndex: 5
+      zIndex: 5,
+      link: '/found-ai'
     },
     {
       id: 2,
