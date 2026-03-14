@@ -78,7 +78,7 @@ const AdornIQ = () => {
               </div>
               <div className="card-number">02</div>
             </div>
-            <div className="card-tag">SMART INVENTORY SEARCH</div>
+            <div className="card-tag">Smart Inventory Search</div>
             <h3 className="card-title">Inven<em>IQ</em></h3>
             <div className="card-subtitle">FIND IT.<br/>SHOW IT.<br/>SELL IT.</div>
             <p className="card-desc">

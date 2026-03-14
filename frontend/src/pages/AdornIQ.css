@@ -353,31 +353,40 @@
 .adorniq-page .products-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
+  gap: 1.5px;
   margin-top: 4rem;
-  border: 1px solid rgba(201,168,76,.15);
-  background: rgba(201,168,76,.08);
+  border: 1.5px solid rgba(201,168,76,.15);
+  background: rgba(201,168,76,.15);
 }
 
 .adorniq-page .product-card {
-  background: var(--warm-black);
+  background: var(--charcoal);
   padding: 3rem 2.5rem;
   position: relative;
   overflow: hidden;
   transition: background .4s;
   cursor: default;
-  display: flex;
-  flex-direction: column;
+}
+
+.adorniq-page .product-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  transform: scaleX(0);
+  transition: transform .5s ease;
 }
 
 .adorniq-page .product-card:hover {
-  background: #0f0d0b;
+  background: #1f1c18;
+}
+
+.adorniq-page .product-card:hover::before {
+  transform: scaleX(1);
 }
 
 .adorniq-page .card-icon-wrap {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
   margin-bottom: 2rem;
 }
 
@@ -398,26 +407,28 @@
 
 .adorniq-page .card-number {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 1rem;
+  font-size: 4rem;
   font-weight: 300;
-  color: rgba(201,168,76,.3);
-  letter-spacing: .1em;
+  color: rgba(201,168,76,.08);
+  position: absolute;
+  top: 1.5rem;
+  right: 2rem;
+  line-height: 1;
 }
 
 .adorniq-page .card-tag {
-  font-size: .55rem;
-  letter-spacing: .25em;
+  font-size: .58rem;
+  letter-spacing: .3em;
   text-transform: uppercase;
   color: var(--gold);
-  margin-bottom: 1rem;
-  line-height: 1.6;
+  margin-bottom: .8rem;
 }
 
 .adorniq-page .card-title {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 2.2rem;
+  font-size: 1.8rem;
   font-weight: 300;
-  margin-bottom: 1.5rem;
+  margin-bottom: .3rem;
   line-height: 1.1;
   color: var(--cream);
 }
@@ -428,20 +439,19 @@
 }
 
 .adorniq-page .card-subtitle {
-  font-size: .65rem;
+  font-size: .7rem;
   letter-spacing: .2em;
   text-transform: uppercase;
-  color: var(--gold);
-  margin-bottom: 2rem;
-  line-height: 1.8;
+  color: rgba(201,168,76,.5);
+  margin-bottom: 1.5rem;
 }
 
 .adorniq-page .card-desc {
   font-size: .83rem;
   font-weight: 200;
   line-height: 1.85;
-  color: rgba(250,246,239,.45);
-  flex-grow: 1;
+  color: rgba(250,246,239,.5);
+  margin-bottom: 2rem;
 }
 
 /* ── HOW IT WORKS ── */

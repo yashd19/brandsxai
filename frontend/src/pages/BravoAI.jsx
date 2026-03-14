@@ -36,14 +36,13 @@ const BravoAI = () => {
         </div>
 
         <div className="hero-content">
-          <div className="hero-pre">BRAnding with VOice AI</div>
+          <div className="hero-pre">Your brand calls. Your prospects listen.</div>
           <h1>
-            <span className="word-bravo">BRAVO</span><br/>
-            <span className="word-outline">VOICE</span>&nbsp;<span className="word-ai">AI</span>
+            <span className="word-bravo">BRANDING</span><br/>
+            <span className="word-outline">WITH</span>&nbsp;<span className="word-ai">VOICE AI</span>
           </h1>
           <div className="hero-sub-row">
             <p className="hero-tagline">
-              Your brand calls. Your prospects listen.<br/>
               <strong>BRAVO AI runs outbound campaigns, qualifies leads at scale, and hands your sales team only the ones ready to close.</strong>
             </p>
             <div className="hero-ctas">

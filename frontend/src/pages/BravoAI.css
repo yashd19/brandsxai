@@ -198,7 +198,7 @@
 
 .bravo-page .hero-pre {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: .8rem;
+  font-size: 0.8rem;
   letter-spacing: .4em;
   text-transform: uppercase;
   color: var(--accent);
@@ -425,7 +425,7 @@
   font-size: .95rem;
   font-weight: 300;
   line-height: 1.8;
-  color: var(--off);
+  color: rgba(240, 237, 233, 0.92);
   max-width: 540px;
   margin-bottom: 4rem;
 }
@@ -522,10 +522,10 @@
 }
 
 .bravo-page .what-card p {
-  font-size: .85rem;
+  font-size: .92rem;
   font-weight: 300;
   line-height: 1.8;
-  color: var(--muted);
+  color: rgba(240, 237, 233, 0.92);
 }
 
 .bravo-page .what-outcome {
@@ -610,10 +610,10 @@
 }
 
 .bravo-page .flow-body p {
-  font-size: .85rem;
+  font-size: .92rem;
   font-weight: 300;
   line-height: 1.8;
-  color: var(--muted);
+  color: rgba(240, 237, 233, 0.92);
   max-width: 620px;
 }
 
@@ -753,10 +753,10 @@
 }
 
 .bravo-page .q-bucket p {
-  font-size: .82rem;
+  font-size: .9rem;
   font-weight: 300;
   line-height: 1.8;
-  color: var(--muted);
+  color: rgba(240, 237, 233, 0.92);
   margin-bottom: 1.5rem;
 }
 
@@ -869,10 +869,10 @@
 }
 
 .bravo-page .call-text {
-  font-size: .85rem;
+  font-size: .92rem;
   font-weight: 300;
   line-height: 1.7;
-  color: var(--off);
+  color: rgba(240, 237, 233, 0.92);
   background: rgba(108,99,255,.05);
   border-left: 2px solid rgba(108,99,255,.25);
   padding: .7rem 1rem;
@@ -962,10 +962,10 @@
 }
 
 .bravo-page .who-card p {
-  font-size: .75rem;
+  font-size: .82rem;
   font-weight: 300;
   line-height: 1.7;
-  color: var(--muted);
+  color: rgba(240, 237, 233, 0.92);
 }
 
 /* ── FOOTER - BrandsXAI Style ── */
@@ -998,7 +998,7 @@
 
 .bravo-page .footer-tagline {
   font-size: 14px;
-  color: var(--muted);
+  color: var(--off);
   line-height: 1.6;
 }
 
@@ -1019,7 +1019,7 @@
 
 .bravo-page .footer-col a {
   display: block;
-  color: var(--muted);
+  color: var(--off);
   text-decoration: none;
   font-size: 14px;
   margin-bottom: 10px;
@@ -1038,7 +1038,7 @@
   padding-top: 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 13px;
-  color: var(--muted);
+  color: var(--off);
 }
 
 .bravo-page .footer-powered strong {

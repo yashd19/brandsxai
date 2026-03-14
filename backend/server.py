@@ -1385,5 +1385,4 @@ async def startup_event():
     if mysql_conn:
         init_mysql_tables(mysql_conn)
         mysql_conn.close()
-    await init_mongodb_collections()
     logger.info("Database initialization complete")
