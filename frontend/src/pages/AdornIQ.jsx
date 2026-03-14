@@ -56,75 +56,50 @@ const AdornIQ = () => {
         <div className="products-grid">
           {/* BRIDAL VISION AI */}
           <div className="product-card">
-            <div className="card-number">01</div>
-            <div className="card-icon">✦</div>
-            <div className="card-tag">Virtual Try-On</div>
-            <h3 className="card-title">Bridal Vision <em>AI</em></h3>
-            <div className="card-subtitle">See It. Love It. Wear It.</div>
+            <div className="card-icon-wrap">
+              <div className="card-icon-ring">
+                <span className="card-icon-symbol">✦</span>
+              </div>
+              <div className="card-number">01</div>
+            </div>
+            <div className="card-tag">VIRTUAL TRY-ON</div>
+            <h3 className="card-title">Bridal<br/>Vision<br/><em>AI</em></h3>
+            <div className="card-subtitle">SEE IT.<br/>LOVE IT.<br/>WEAR IT.</div>
             <p className="card-desc">
               Upload a photo and watch jewellery come to life on you — in your wedding attire, on your wedding day. Powered by vision AI, every piece is rendered with photorealistic precision.
             </p>
-            <ul className="card-features">
-              <li>AI-powered virtual jewellery try-on</li>
-              <li>Wedding day simulation with outfit matching</li>
-              <li>One-click purchase from try-on view</li>
-              <li>Share looks with family instantly</li>
-            </ul>
-            <img
-              className="card-img"
-              src="https://www.astyledwedding.com/wp-content/uploads/2020/09/bridal-jewelry-inspiration-730x1024.jpg"
-              alt="Bride wearing bridal jewelry"
-              loading="lazy"
-              onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=600&q=80&auto=format&fit=crop'; }}
-            />
           </div>
 
           {/* INVENIQ */}
           <div className="product-card">
-            <div className="card-number">02</div>
-            <div className="card-icon">◈</div>
-            <div className="card-tag">Smart Inventory Search</div>
+            <div className="card-icon-wrap">
+              <div className="card-icon-ring">
+                <span className="card-icon-symbol">◇</span>
+              </div>
+              <div className="card-number">02</div>
+            </div>
+            <div className="card-tag">SMART INVENTORY SEARCH</div>
             <h3 className="card-title">Inven<em>IQ</em></h3>
-            <div className="card-subtitle">Find It. Show It. Sell It.</div>
+            <div className="card-subtitle">FIND IT.<br/>SHOW IT.<br/>SELL IT.</div>
             <p className="card-desc">
               Sales staff simply describe what they're looking for — in plain language — and InvenIQ surfaces the right pieces from inventory in seconds. No more dead ends, no more missed sales.
             </p>
-            <ul className="card-features">
-              <li>Natural language inventory search</li>
-              <li>Real-time stock visibility across locations</li>
-              <li>AI-ranked results by relevance</li>
-              <li>Instant availability & pricing display</li>
-            </ul>
-            <img
-              className="card-img"
-              src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=600&q=80&auto=format&fit=crop"
-              alt="Jewelry store showcase display"
-              loading="lazy"
-            />
           </div>
 
           {/* JEWELMATCH */}
           <div className="product-card">
-            <div className="card-number">03</div>
-            <div className="card-icon">❋</div>
-            <div className="card-tag">Taste-Based Recommendation</div>
-            <h3 className="card-title">Jewel<em>Match</em> AI</h3>
-            <div className="card-subtitle">Her Style. Her Match. Her Choice.</div>
+            <div className="card-icon-wrap">
+              <div className="card-icon-ring">
+                <span className="card-icon-symbol">✳</span>
+              </div>
+              <div className="card-number">03</div>
+            </div>
+            <div className="card-tag">TASTE-BASED RECOMMENDATION</div>
+            <h3 className="card-title">JewelMatch<br/><em>AI</em></h3>
+            <div className="card-subtitle">HER STYLE.<br/>HER MATCH.<br/>HER CHOICE.</div>
             <p className="card-desc">
               The customer expresses her colour preferences, design sensibility and style — and JewelMatch curates a personalised selection she'll fall in love with, before she even asks.
             </p>
-            <ul className="card-features">
-              <li>Preference-driven product discovery</li>
-              <li>Colour, design & style matching engine</li>
-              <li>Salesperson-guided curation interface</li>
-              <li>Learns & refines with every interaction</li>
-            </ul>
-            <img
-              className="card-img"
-              src="https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=600&q=80&auto=format&fit=crop"
-              alt="Woman choosing jewelry in store"
-              loading="lazy"
-            />
           </div>
         </div>
       </section>

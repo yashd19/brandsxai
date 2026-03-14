@@ -345,7 +345,7 @@
   margin-bottom: 3rem;
 }
 
-/* ── PRODUCT CARDS ── */
+/* ── PRODUCT CARDS - Vertical Layout ── */
 .adorniq-page .products {
   background: var(--warm-black);
 }
@@ -353,76 +353,71 @@
 .adorniq-page .products-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.5px;
+  gap: 1px;
   margin-top: 4rem;
-  border: 1.5px solid rgba(201,168,76,.15);
+  border: 1px solid rgba(201,168,76,.15);
+  background: rgba(201,168,76,.08);
 }
 
 .adorniq-page .product-card {
-  background: var(--charcoal);
+  background: var(--warm-black);
   padding: 3rem 2.5rem;
   position: relative;
   overflow: hidden;
   transition: background .4s;
   cursor: default;
-}
-
-.adorniq-page .product-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--gold), transparent);
-  transform: scaleX(0);
-  transition: transform .5s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .adorniq-page .product-card:hover {
-  background: #1f1c18;
+  background: #0f0d0b;
 }
 
-.adorniq-page .product-card:hover::before {
-  transform: scaleX(1);
-}
-
-.adorniq-page .card-number {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: 4rem;
-  font-weight: 300;
-  color: rgba(201,168,76,.08);
-  position: absolute;
-  top: 1.5rem;
-  right: 2rem;
-  line-height: 1;
-}
-
-.adorniq-page .card-icon {
-  width: 48px;
-  height: 48px;
+.adorniq-page .card-icon-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   margin-bottom: 2rem;
+}
+
+.adorniq-page .card-icon-ring {
+  width: 56px;
+  height: 56px;
   border: 1px solid rgba(201,168,76,.3);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.adorniq-page .card-icon-symbol {
   font-size: 1.2rem;
+  color: var(--gold-light);
+}
+
+.adorniq-page .card-number {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1rem;
+  font-weight: 300;
+  color: rgba(201,168,76,.3);
+  letter-spacing: .1em;
 }
 
 .adorniq-page .card-tag {
-  font-size: .58rem;
-  letter-spacing: .3em;
+  font-size: .55rem;
+  letter-spacing: .25em;
   text-transform: uppercase;
   color: var(--gold);
-  margin-bottom: .8rem;
+  margin-bottom: 1rem;
+  line-height: 1.6;
 }
 
 .adorniq-page .card-title {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 1.8rem;
+  font-size: 2.2rem;
   font-weight: 300;
-  margin-bottom: .3rem;
+  margin-bottom: 1.5rem;
   line-height: 1.1;
   color: var(--cream);
 }
@@ -433,59 +428,20 @@
 }
 
 .adorniq-page .card-subtitle {
-  font-size: .7rem;
+  font-size: .65rem;
   letter-spacing: .2em;
   text-transform: uppercase;
-  color: rgba(201,168,76,.5);
-  margin-bottom: 1.5rem;
+  color: var(--gold);
+  margin-bottom: 2rem;
+  line-height: 1.8;
 }
 
 .adorniq-page .card-desc {
   font-size: .83rem;
   font-weight: 200;
   line-height: 1.85;
-  color: rgba(250,246,239,.5);
-  margin-bottom: 2rem;
-}
-
-.adorniq-page .card-features {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.adorniq-page .card-features li {
-  font-size: .75rem;
-  font-weight: 300;
-  letter-spacing: .05em;
   color: rgba(250,246,239,.45);
-  padding: .5rem 0;
-  border-bottom: 1px solid rgba(201,168,76,.08);
-  display: flex;
-  align-items: center;
-  gap: .8rem;
-}
-
-.adorniq-page .card-features li::before {
-  content: '◆';
-  font-size: .4rem;
-  color: var(--gold);
-  flex-shrink: 0;
-}
-
-.adorniq-page .card-img {
-  width: 100%;
-  height: 220px;
-  object-fit: cover;
-  margin-top: 2rem;
-  opacity: .7;
-  transition: opacity .4s;
-  filter: sepia(20%) brightness(.9);
-}
-
-.adorniq-page .product-card:hover .card-img {
-  opacity: .9;
-  filter: sepia(10%) brightness(1);
+  flex-grow: 1;
 }
 
 /* ── HOW IT WORKS ── */
