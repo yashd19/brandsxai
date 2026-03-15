@@ -56,50 +56,59 @@ const AdornIQ = () => {
         <div className="products-grid">
           {/* BRIDAL VISION AI */}
           <div className="product-card">
-            <div className="card-icon-wrap">
-              <div className="card-icon-ring">
-                <span className="card-icon-symbol">✦</span>
+            <div className="card-content">
+              <div className="card-icon-wrap">
+                <div className="card-icon-ring">
+                  <span className="card-icon-symbol">✦</span>
+                </div>
+                <div className="card-number">01</div>
               </div>
-              <div className="card-number">01</div>
+              <div className="card-tag">VIRTUAL<br/>TRY-ON</div>
+              <h3 className="card-title">Bridal<br/>Vision<br/><em>AI</em></h3>
+              <div className="card-subtitle">SEE IT.<br/>LOVE IT.<br/>WEAR IT.</div>
+              <p className="card-desc">
+                Upload a photo and watch jewellery come to life on you — in your wedding attire, on your wedding day.
+              </p>
             </div>
-            <div className="card-tag">VIRTUAL TRY-ON</div>
-            <h3 className="card-title">Bridal<br/>Vision<br/><em>AI</em></h3>
-            <div className="card-subtitle">SEE IT.<br/>LOVE IT.<br/>WEAR IT.</div>
-            <p className="card-desc">
-              Upload a photo and watch jewellery come to life on you — in your wedding attire, on your wedding day. Powered by vision AI, every piece is rendered with photorealistic precision.
-            </p>
+            <div className="card-panel"></div>
           </div>
 
           {/* INVENIQ */}
           <div className="product-card">
-            <div className="card-icon-wrap">
-              <div className="card-icon-ring">
-                <span className="card-icon-symbol">◇</span>
+            <div className="card-content">
+              <div className="card-icon-wrap">
+                <div className="card-icon-ring">
+                  <span className="card-icon-symbol">◇</span>
+                </div>
+                <div className="card-number">02</div>
               </div>
-              <div className="card-number">02</div>
+              <div className="card-tag">SMART<br/>INVENTORY<br/>SEARCH</div>
+              <h3 className="card-title">Inven<em>IQ</em></h3>
+              <div className="card-subtitle">FIND IT.<br/>SHOW IT.<br/>SELL IT.</div>
+              <p className="card-desc">
+                Sales staff simply describe what they're looking for — and InvenIQ surfaces the right pieces in seconds.
+              </p>
             </div>
-            <div className="card-tag">SMART INVENTORY SEARCH</div>
-            <h3 className="card-title">Inven<em>IQ</em></h3>
-            <div className="card-subtitle">FIND IT.<br/>SHOW IT.<br/>SELL IT.</div>
-            <p className="card-desc">
-              Sales staff simply describe what they're looking for — in plain language — and InvenIQ surfaces the right pieces from inventory in seconds. No more dead ends, no more missed sales.
-            </p>
+            <div className="card-panel"></div>
           </div>
 
           {/* JEWELMATCH */}
           <div className="product-card">
-            <div className="card-icon-wrap">
-              <div className="card-icon-ring">
-                <span className="card-icon-symbol">✳</span>
+            <div className="card-content">
+              <div className="card-icon-wrap">
+                <div className="card-icon-ring">
+                  <span className="card-icon-symbol">✳</span>
+                </div>
+                <div className="card-number">03</div>
               </div>
-              <div className="card-number">03</div>
+              <div className="card-tag">TASTE-<br/>BASED<br/>RECOMMENDATION</div>
+              <h3 className="card-title">JewelMatch<br/><em>AI</em></h3>
+              <div className="card-subtitle">HER STYLE.<br/>HER MATCH.<br/>HER CHOICE.</div>
+              <p className="card-desc">
+                The customer expresses her colour preferences and style — and JewelMatch curates a personalised selection.
+              </p>
             </div>
-            <div className="card-tag">TASTE-BASED RECOMMENDATION</div>
-            <h3 className="card-title">JewelMatch<br/><em>AI</em></h3>
-            <div className="card-subtitle">HER STYLE.<br/>HER MATCH.<br/>HER CHOICE.</div>
-            <p className="card-desc">
-              The customer expresses her colour preferences, design sensibility and style — and JewelMatch curates a personalised selection she'll fall in love with, before she even asks.
-            </p>
+            <div className="card-panel"></div>
           </div>
         </div>
       </section>
