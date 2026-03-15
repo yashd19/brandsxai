@@ -345,84 +345,88 @@
   margin-bottom: 3rem;
 }
 
-/* ── PRODUCT CARDS - Vertical Layout with Dark Panel ── */
+/* ── PRODUCT CARDS ── */
 .adorniq-page .products {
   background: var(--warm-black);
 }
 
 .adorniq-page .products-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  justify-content: center;
   gap: 0;
   margin-top: 4rem;
 }
 
 .adorniq-page .product-card {
-  background: var(--warm-black);
+  background: var(--charcoal);
+  padding: 3rem 2rem;
   position: relative;
   overflow: hidden;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  min-height: 550px;
-  border: 1px solid rgba(201,168,76,.08);
+  transition: background .4s;
+  cursor: default;
+  width: 320px;
+  flex-shrink: 0;
+  border: 1px solid rgba(201,168,76,.15);
+  border-radius: 12px;
 }
 
-.adorniq-page .product-card .card-content {
-  padding: 2.5rem 2rem;
-  display: flex;
-  flex-direction: column;
+.adorniq-page .product-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  transform: scaleX(0);
+  transition: transform .5s ease;
 }
 
-.adorniq-page .product-card .card-panel {
-  background: var(--charcoal);
-  border-left: 1px solid rgba(201,168,76,.1);
+.adorniq-page .product-card:hover {
+  background: #1f1c18;
 }
 
-.adorniq-page .card-icon-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  margin-bottom: 2rem;
-}
-
-.adorniq-page .card-icon-ring {
-  width: 48px;
-  height: 48px;
-  border: 1px solid rgba(201,168,76,.25);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.adorniq-page .card-icon-symbol {
-  font-size: 1rem;
-  color: var(--gold-light);
+.adorniq-page .product-card:hover::before {
+  transform: scaleX(1);
 }
 
 .adorniq-page .card-number {
   font-family: 'Cormorant Garamond', serif;
-  font-size: .85rem;
+  font-size: 4rem;
   font-weight: 300;
-  color: rgba(201,168,76,.35);
-  font-style: italic;
+  color: rgba(201,168,76,.08);
+  position: absolute;
+  top: 1.5rem;
+  right: 2rem;
+  line-height: 1;
+}
+
+.adorniq-page .card-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 2rem;
+  border: 1px solid rgba(201,168,76,.3);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
 }
 
 .adorniq-page .card-tag {
-  font-size: .52rem;
-  letter-spacing: .22em;
+  font-size: .58rem;
+  letter-spacing: .3em;
   text-transform: uppercase;
   color: var(--gold);
-  margin-bottom: 1.2rem;
-  line-height: 1.6;
+  margin-bottom: .8rem;
 }
 
 .adorniq-page .card-title {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 2.4rem;
+  font-size: 1.8rem;
   font-weight: 300;
-  margin-bottom: 1.2rem;
-  line-height: 1.05;
+  margin-bottom: .3rem;
+  line-height: 1.1;
   color: var(--cream);
 }
 
@@ -432,20 +436,18 @@
 }
 
 .adorniq-page .card-subtitle {
-  font-size: .6rem;
-  letter-spacing: .18em;
+  font-size: .7rem;
+  letter-spacing: .2em;
   text-transform: uppercase;
-  color: var(--gold);
-  margin-bottom: 1.8rem;
-  line-height: 1.9;
+  color: rgba(201,168,76,.5);
+  margin-bottom: 1.5rem;
 }
 
 .adorniq-page .card-desc {
-  font-size: .78rem;
+  font-size: .83rem;
   font-weight: 200;
-  line-height: 1.9;
-  color: rgba(250,246,239,.4);
-  flex-grow: 1;
+  line-height: 1.85;
+  color: rgba(250,246,239,.5);
 }
 
 /* ── HOW IT WORKS ── */
@@ -646,15 +648,6 @@
 }
 
 /* ── RESPONSIVE ── */
-@media (max-width: 1200px) {
-  .adorniq-page .products-grid {
-    grid-template-columns: 1fr;
-  }
-  .adorniq-page .product-card {
-    min-height: 400px;
-  }
-}
-
 @media (max-width: 900px) {
   .adorniq-page .adorniq-nav {
     padding: 1.2rem 2rem;
@@ -668,15 +661,9 @@
   .adorniq-page section {
     padding: 5rem 2rem;
   }
-  .adorniq-page .product-card {
+  .adorniq-page .products-grid {
     grid-template-columns: 1fr;
-    min-height: auto;
-  }
-  .adorniq-page .product-card .card-panel {
-    display: none;
-  }
-  .adorniq-page .product-card .card-content {
-    padding: 2rem 1.5rem;
+    gap: 1px;
   }
   .adorniq-page .steps {
     grid-template-columns: repeat(2, 1fr);
