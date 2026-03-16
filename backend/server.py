@@ -294,6 +294,19 @@ def init_mysql_tables(connection):
                     (claim_id, 'Code Extractor', 'FileSearch', '/dashboard/claim-processing/extractor', 1)
                 )
                 logger.info("Created Claim Processing feature with pages")
+            else:
+                # Migrate: ensure Code Extractor page exists for existing Claim Processing feature
+                claim_id = claim_feature['id']
+                cursor.execute(
+                    "SELECT id FROM brandsxai_feature_pages WHERE feature_id = %s AND name = 'Code Extractor'",
+                    (claim_id,)
+                )
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO brandsxai_feature_pages (feature_id, name, icon, route, display_order) VALUES (%s, %s, %s, %s, %s)",
+                        (claim_id, 'Code Extractor', 'FileSearch', '/dashboard/claim-processing/extractor', 1)
+                    )
+                    logger.info("Migrated: added Code Extractor page to existing Claim Processing feature")
             
             # Insert sample brands if not exists
             cursor.execute("SELECT id FROM brandsxai_brands WHERE name = 'Brand X'")
