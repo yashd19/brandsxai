@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Phone, FileCheck, Users, LayoutDashboard, Clock, LogOut, ChevronRight, Megaphone } from 'lucide-react';
+import { Phone, FileCheck, Users, LayoutDashboard, Clock, LogOut, ChevronRight, Megaphone, FileSearch } from 'lucide-react';
 import Campaign from './Campaign';
 import Session from './Session';
 import Contacts from './Contacts';
 import Dashboards from './Dashboards';
+import ClaimProcessing from './ClaimProcessing';
 import './Dashboard.css';
 
 const iconMap = {
@@ -13,7 +14,8 @@ const iconMap = {
   Users: Users,
   LayoutDashboard: LayoutDashboard,
   Clock: Clock,
-  Megaphone: Megaphone
+  Megaphone: Megaphone,
+  FileSearch: FileSearch
 };
 
 const Dashboard = () => {
@@ -140,6 +142,8 @@ const Dashboard = () => {
             <Session />
           ) : activePage?.name === 'Contacts' ? (
             <Contacts />
+          ) : activePage?.name === 'Code Extractor' || activePage?.route?.includes('claim-processing') ? (
+            <ClaimProcessing />
           ) : activePage ? (
             <div className="page-placeholder">
               <div className="placeholder-icon">

@@ -1,0 +1,47 @@
+{
+  "summary": "Claim Processing feature tested successfully. All backend API endpoints and frontend E2E tests pass. AI integration (ICD-10 code extraction via Gemini 2.5 Flash) is working correctly.",
+  "mode": "generate",
+  "baseline_commit": "da0d8c57f98842a46f12bc62293dd195607806e0",
+  "head_commit": "b0e3886ae92cf749fbd1bf748a759ffed221fada",
+  "specs_created": [
+    "/app/tests/e2e/claim-processing.spec.ts",
+    "/app/backend/tests/test_claim_processing.py"
+  ],
+  "specs_updated": [
+    "/app/tests/fixtures/helpers.ts"
+  ],
+  "quarantined_tests": [],
+  "test_report_links": [
+    "/app/backend/tests/test_claim_processing.py",
+    "/app/test_reports/pytest/claim_processing_results.xml",
+    "/app/tests/e2e/claim-processing.spec.ts"
+  ],
+  "regression_results": {
+    "total_specs": 33,
+    "passed": 33,
+    "failed": 0,
+    "skipped": 0
+  },
+  "issues": [],
+  "action_items": [],
+  "updated_files": [
+    "/app/tests/e2e/claim-processing.spec.ts",
+    "/app/tests/fixtures/helpers.ts",
+    "/app/backend/tests/test_claim_processing.py"
+  ],
+  "test_results": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "100% (12/12 claim processing tests passed, 4/4 campaign regression tests passed)"
+  },
+  "seed_data_creation": "Test claim sessions created during testing (prefixed with TEST_)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Claim Processing feature is fully tested. Backend has 17 pytest tests covering session CRUD, chat/AI integration, code search, code management, and Excel export. Frontend has 12 E2E tests covering navigation, session creation, AI chat, code search, code add/remove, session history, and export button states. All tests use test user mukesh/mukesh123. Navigation to Claim Processing is via sidebar button (2nd button in .dashboard-sidebar). Login uses 'Continue' button not 'Sign in'.",
+  "features_tested": {
+    "create_new_session": "PASS - Sessions created successfully via both center button and header button",
+    "send_chat_ai_extraction": "PASS - AI extracts ICD-10 codes from text messages correctly",
+    "icd10_code_search": "PASS - Search returns matching codes for both code prefix and description",
+    "update_codes": "PASS - Add and remove codes working correctly via UI and API",
+    "export_to_excel": "PASS - Excel export generates valid .xlsx file with code data"
+  }
+}

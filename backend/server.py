@@ -5,6 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import json
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional
@@ -47,12 +48,31 @@ MYSQL_CONFIG = {
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# MySQL availability cache to avoid repeated connection attempts
+_mysql_available = None
+_mysql_check_time = None
+MYSQL_RETRY_INTERVAL = 60  # Retry MySQL check every 60 seconds
+
 def try_mysql_connection():
-    """Try to get MySQL connection, returns None if fails"""
+    """Try to get MySQL connection with caching to avoid repeated timeouts"""
+    global _mysql_available, _mysql_check_time
+    
+    current_time = datetime.now(timezone.utc)
+    
+    # Skip MySQL if we know it's down and haven't waited long enough
+    if _mysql_available is False and _mysql_check_time:
+        elapsed = (current_time - _mysql_check_time).total_seconds()
+        if elapsed < MYSQL_RETRY_INTERVAL:
+            return None
+    
     try:
         conn = pymysql.connect(**MYSQL_CONFIG)
+        _mysql_available = True
+        _mysql_check_time = current_time
         return conn
     except pymysql.Error as e:
+        _mysql_available = False
+        _mysql_check_time = current_time
         logger.warning(f"MySQL connection failed: {e}")
         return None
 
@@ -192,6 +212,37 @@ def init_mysql_tables(connection):
                 )
             """)
             
+            # Claim Processing Sessions table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS brandsxai_claim_sessions (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    brand_id INT NOT NULL,
+                    title VARCHAR(255) DEFAULT 'New Claim Session',
+                    status ENUM('active', 'completed', 'archived') DEFAULT 'active',
+                    extracted_codes JSON,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_claim_user (user_id),
+                    INDEX idx_claim_brand (brand_id),
+                    INDEX idx_claim_status (status)
+                )
+            """)
+            
+            # Claim Processing Messages table (chat history)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS brandsxai_claim_messages (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    session_id VARCHAR(36) NOT NULL,
+                    role ENUM('user', 'assistant', 'system') NOT NULL,
+                    content TEXT NOT NULL,
+                    file_info JSON,
+                    codes_extracted JSON,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_msg_session (session_id)
+                )
+            """)
+            
             # Insert default admin if not exists
             cursor.execute("SELECT id FROM brandsxai_admins WHERE username = 'madoveradmin'")
             if not cursor.fetchone():
@@ -231,12 +282,18 @@ def init_mysql_tables(connection):
                 logger.info("Created Voice AI feature with pages")
             
             cursor.execute("SELECT id FROM brandsxai_features WHERE name = 'Claim Processing'")
-            if not cursor.fetchone():
+            claim_feature = cursor.fetchone()
+            if not claim_feature:
                 cursor.execute(
                     "INSERT INTO brandsxai_features (name, icon, description) VALUES (%s, %s, %s)",
-                    ('Claim Processing', 'FileCheck', 'AI-powered claim processing automation')
+                    ('Claim Processing', 'FileCheck', 'AI-powered medical claim processing and ICD-10 code extraction')
                 )
-                logger.info("Created Claim Processing feature")
+                claim_id = cursor.lastrowid
+                cursor.execute(
+                    "INSERT INTO brandsxai_feature_pages (feature_id, name, icon, route, display_order) VALUES (%s, %s, %s, %s, %s)",
+                    (claim_id, 'Code Extractor', 'FileSearch', '/dashboard/claim-processing/extractor', 1)
+                )
+                logger.info("Created Claim Processing feature with pages")
             
             # Insert sample brands if not exists
             cursor.execute("SELECT id FROM brandsxai_brands WHERE name = 'Brand X'")
@@ -295,8 +352,26 @@ async def init_mongodb_collections():
         claim = await mongo_db.brandsxai_features.find_one({"name": "Claim Processing"})
         if not claim:
             await mongo_db.brandsxai_features.insert_one({
-                "id": 2, "name": "Claim Processing", "icon": "FileCheck", "description": "AI claim processing", "pages": []
+                "id": 2, "name": "Claim Processing", "icon": "FileCheck", 
+                "description": "AI-powered medical claim processing and ICD-10 code extraction",
+                "pages": [
+                    {"id": 1, "name": "Code Extractor", "icon": "FileSearch", "route": "/dashboard/claim-processing/extractor", "display_order": 1}
+                ]
             })
+        else:
+            # Update existing Claim Processing to add pages if missing
+            if not claim.get('pages'):
+                await mongo_db.brandsxai_features.update_one(
+                    {"name": "Claim Processing"},
+                    {"$set": {"pages": [
+                        {"id": 1, "name": "Code Extractor", "icon": "FileSearch", "route": "/dashboard/claim-processing/extractor", "display_order": 1}
+                    ]}}
+                )
+        
+        # Create claim processing indexes
+        await mongo_db.brandsxai_claim_sessions.create_index("user_id")
+        await mongo_db.brandsxai_claim_sessions.create_index("brand_id")
+        await mongo_db.brandsxai_claim_messages.create_index("session_id")
         
         # Default brands
         brand_x = await mongo_db.brandsxai_brands.find_one({"name": "Brand X"})
@@ -351,6 +426,32 @@ class LeadCreate(BaseModel):
     email: EmailStr
     company: Optional[str] = None
     message: Optional[str] = None
+
+# ==================== CLAIM PROCESSING MODELS ====================
+
+class ClaimSessionCreate(BaseModel):
+    title: Optional[str] = "New Claim Session"
+
+class ClaimMessage(BaseModel):
+    content: str
+    file_data: Optional[List[dict]] = None  # [{filename, content_type, base64_data}]
+
+class ICD10Code(BaseModel):
+    code: str
+    description: str
+    source_text: Optional[str] = None
+    confidence: Optional[float] = None
+
+class ClaimSessionResponse(BaseModel):
+    id: str
+    title: str
+    status: str
+    extracted_codes: List[dict]
+    created_at: str
+    updated_at: str
+
+class CodeUpdateRequest(BaseModel):
+    codes: List[dict]  # [{code, description}]
 
 # ==================== JWT HELPERS ====================
 
@@ -1363,6 +1464,551 @@ async def get_session_calls(current_user: dict = Depends(get_current_user)):
         },
         "db_source": "mongodb"
     }
+
+# ==================== CLAIM PROCESSING ====================
+
+# ICD-10 Code validation data (common codes for autocomplete)
+ICD10_COMMON_CODES = {
+    "E11.9": "Type 2 diabetes mellitus without complications",
+    "I10": "Essential (primary) hypertension",
+    "J06.9": "Acute upper respiratory infection, unspecified",
+    "K21.0": "Gastro-esophageal reflux disease with esophagitis",
+    "K21.9": "Gastro-esophageal reflux disease without esophagitis",
+    "E53.8": "Deficiency of other specified B group vitamins",
+    "Z98.84": "Bariatric surgery status",
+    "R05.9": "Cough, unspecified",
+    "M54.5": "Low back pain",
+    "F32.9": "Major depressive disorder, single episode, unspecified",
+    "J45.909": "Unspecified asthma, uncomplicated",
+    "E78.5": "Hyperlipidemia, unspecified",
+    "N39.0": "Urinary tract infection, site not specified",
+    "J18.9": "Pneumonia, unspecified organism",
+    "G43.909": "Migraine, unspecified, not intractable, without status migrainosus",
+    "K59.00": "Constipation, unspecified",
+    "R10.9": "Unspecified abdominal pain",
+    "R51.9": "Headache, unspecified",
+    "Z87.891": "Personal history of nicotine dependence",
+    "Z79.899": "Other long term (current) drug therapy",
+}
+
+ICD10_EXTRACTION_PROMPT = """You are an expert medical coder specializing in ICD-10 code extraction from clinical notes.
+
+Your task is to analyze the provided clinical document and extract ALL relevant ICD-10 codes.
+
+IMPORTANT GUIDELINES:
+1. Extract codes for ALL documented conditions, diagnoses, and symptoms
+2. Include codes from ALL sections: Chief Complaint, History, Assessment & Plan, Review of Systems, etc.
+3. Include both primary and secondary diagnoses
+4. Include codes for chronic conditions mentioned (even if "controlled" or "stable")
+5. Include codes for surgical history (Z codes)
+6. Include codes for current medications context
+7. Be thorough - it's better to include a code that can be removed than to miss one
+
+For each code, provide:
+- code: The ICD-10 code (e.g., "E11.9")
+- description: Brief description of what the code represents
+- source_text: The exact phrase or sentence from the document that supports this code
+- confidence: Your confidence level (0.0-1.0)
+
+Respond ONLY with a JSON array of codes. No other text.
+Example format:
+[
+  {"code": "E11.9", "description": "Type 2 diabetes mellitus without complications", "source_text": "Patient has history of DM2", "confidence": 0.95},
+  {"code": "I10", "description": "Essential hypertension", "source_text": "HTN controlled on lisinopril", "confidence": 0.9}
+]
+
+If no valid codes can be extracted, return an empty array: []
+"""
+
+@api_router.post("/claim-processing/sessions")
+async def create_claim_session(
+    request: ClaimSessionCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new claim processing session"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    import uuid
+    session_id = str(uuid.uuid4())
+    user_id = int(current_user.get('sub'))
+    brand_id = current_user.get('brand_id')
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO brandsxai_claim_sessions (id, user_id, brand_id, title, extracted_codes)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (session_id, user_id, brand_id, request.title, json.dumps([])))
+                mysql_conn.commit()
+                
+                return {
+                    "id": session_id,
+                    "title": request.title,
+                    "status": "active",
+                    "extracted_codes": [],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "db_source": "mysql"
+                }
+        except Exception as e:
+            logger.error(f"MySQL create claim session error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    session = {
+        "id": session_id,
+        "user_id": user_id,
+        "brand_id": brand_id,
+        "title": request.title,
+        "status": "active",
+        "extracted_codes": [],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await mongo_db.brandsxai_claim_sessions.insert_one(session)
+    del session['_id']
+    session['db_source'] = 'mongodb'
+    return session
+
+@api_router.get("/claim-processing/sessions")
+async def get_claim_sessions(current_user: dict = Depends(get_current_user)):
+    """Get all claim sessions for the user"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    user_id = int(current_user.get('sub'))
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, title, status, extracted_codes, created_at, updated_at
+                    FROM brandsxai_claim_sessions 
+                    WHERE user_id = %s 
+                    ORDER BY updated_at DESC
+                    LIMIT 50
+                """, (user_id,))
+                sessions = cursor.fetchall()
+                
+                for s in sessions:
+                    if isinstance(s.get('extracted_codes'), str):
+                        s['extracted_codes'] = json.loads(s['extracted_codes'])
+                    s['created_at'] = s['created_at'].isoformat() if s.get('created_at') else None
+                    s['updated_at'] = s['updated_at'].isoformat() if s.get('updated_at') else None
+                
+                return {"sessions": sessions, "db_source": "mysql"}
+        except Exception as e:
+            logger.error(f"MySQL get claim sessions error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    sessions = await mongo_db.brandsxai_claim_sessions.find(
+        {"user_id": user_id}, {"_id": 0}
+    ).sort("updated_at", -1).limit(50).to_list(50)
+    
+    return {"sessions": sessions, "db_source": "mongodb"}
+
+@api_router.get("/claim-processing/sessions/{session_id}")
+async def get_claim_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a specific claim session with messages"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    user_id = int(current_user.get('sub'))
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT * FROM brandsxai_claim_sessions 
+                    WHERE id = %s AND user_id = %s
+                """, (session_id, user_id))
+                session = cursor.fetchone()
+                
+                if not session:
+                    raise HTTPException(status_code=404, detail="Session not found")
+                
+                cursor.execute("""
+                    SELECT id, role, content, file_info, codes_extracted, created_at
+                    FROM brandsxai_claim_messages 
+                    WHERE session_id = %s 
+                    ORDER BY created_at ASC
+                """, (session_id,))
+                messages = cursor.fetchall()
+                
+                if isinstance(session.get('extracted_codes'), str):
+                    session['extracted_codes'] = json.loads(session['extracted_codes'])
+                session['created_at'] = session['created_at'].isoformat() if session.get('created_at') else None
+                session['updated_at'] = session['updated_at'].isoformat() if session.get('updated_at') else None
+                
+                for m in messages:
+                    if isinstance(m.get('file_info'), str):
+                        m['file_info'] = json.loads(m['file_info'])
+                    if isinstance(m.get('codes_extracted'), str):
+                        m['codes_extracted'] = json.loads(m['codes_extracted'])
+                    m['created_at'] = m['created_at'].isoformat() if m.get('created_at') else None
+                
+                return {"session": session, "messages": messages, "db_source": "mysql"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"MySQL get claim session error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    session = await mongo_db.brandsxai_claim_sessions.find_one(
+        {"id": session_id, "user_id": user_id}, {"_id": 0}
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    messages = await mongo_db.brandsxai_claim_messages.find(
+        {"session_id": session_id}, {"_id": 0}
+    ).sort("created_at", 1).to_list(1000)
+    
+    return {"session": session, "messages": messages, "db_source": "mongodb"}
+
+@api_router.post("/claim-processing/sessions/{session_id}/chat")
+async def chat_with_claim_session(
+    session_id: str,
+    request: ClaimMessage,
+    current_user: dict = Depends(get_current_user)
+):
+    """Send a message to the claim processing AI"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    user_id = int(current_user.get('sub'))
+    
+    # Verify session exists
+    session = None
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("SELECT * FROM brandsxai_claim_sessions WHERE id = %s AND user_id = %s", (session_id, user_id))
+                session = cursor.fetchone()
+        except Exception as e:
+            logger.error(f"MySQL session check error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    if not session:
+        session = await mongo_db.brandsxai_claim_sessions.find_one({"id": session_id, "user_id": user_id})
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Get existing codes from session
+    existing_codes = session.get('extracted_codes', [])
+    if isinstance(existing_codes, str):
+        existing_codes = json.loads(existing_codes)
+    
+    # Prepare the AI prompt
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContent
+        import uuid as uuid_module
+        
+        emergent_key = os.environ.get('EMERGENT_LLM_KEY')
+        if not emergent_key:
+            raise HTTPException(status_code=500, detail="AI service not configured")
+        
+        # Build system message for the AI
+        system_message = """You are an expert ICD-10 medical coding assistant. 
+Your task is to help extract and manage ICD-10 codes from clinical documents.
+When users provide documents, extract all relevant ICD-10 codes.
+When users ask questions or provide feedback, respond helpfully."""
+        
+        # Initialize chat with proper method chaining
+        chat = LlmChat(
+            api_key=emergent_key,
+            session_id=f"claim-{session_id}-{uuid_module.uuid4().hex[:8]}",
+            system_message=system_message
+        ).with_model("gemini", "gemini-2.5-flash")
+        
+        # Build context message
+        context = f"""Current session has these extracted codes: {json.dumps(existing_codes)}
+
+User message: {request.content}
+
+{ICD10_EXTRACTION_PROMPT if request.file_data else ""}
+
+If the user is asking a question, answer it helpfully. 
+If they're providing feedback about codes (wrong, missing, etc.), acknowledge and provide the corrected code(s).
+If they attach documents, extract all ICD-10 codes.
+
+Always respond in this JSON format:
+{{
+  "response_text": "Your helpful response to the user",
+  "new_codes": [
+    {{"code": "X00.0", "description": "...", "source_text": "...", "confidence": 0.9}}
+  ],
+  "codes_to_remove": ["X00.0"]
+}}
+"""
+        
+        # Build message with file content if present
+        file_contents = []
+        file_info = []
+        if request.file_data:
+            for f in request.file_data:
+                file_contents.append(FileContent(
+                    content_type=f.get('content_type', 'application/pdf'),
+                    file_content_base64=f.get('base64_data', '')
+                ))
+                file_info.append({
+                    "filename": f.get('filename', 'document'),
+                    "content_type": f.get('content_type')
+                })
+        
+        user_msg = UserMessage(text=context, file_contents=file_contents if file_contents else None)
+        
+        # Send to AI
+        response = await chat.send_message(user_msg)
+        response_text = str(response)
+        
+        # Parse AI response
+        try:
+            # Try to extract JSON from response
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                ai_response = json.loads(json_match.group())
+            else:
+                ai_response = {"response_text": response_text, "new_codes": [], "codes_to_remove": []}
+        except json.JSONDecodeError:
+            ai_response = {"response_text": response_text, "new_codes": [], "codes_to_remove": []}
+        
+        assistant_text = ai_response.get('response_text', response_text)
+        new_codes = ai_response.get('new_codes', [])
+        codes_to_remove = ai_response.get('codes_to_remove', [])
+        
+        # Update codes list
+        updated_codes = [c for c in existing_codes if c.get('code') not in codes_to_remove]
+        existing_code_set = {c.get('code') for c in updated_codes}
+        for nc in new_codes:
+            if nc.get('code') and nc.get('code') not in existing_code_set:
+                updated_codes.append(nc)
+        
+        # Save to database
+        mysql_conn = try_mysql_connection()
+        if mysql_conn:
+            try:
+                with mysql_conn.cursor() as cursor:
+                    # Save user message
+                    cursor.execute("""
+                        INSERT INTO brandsxai_claim_messages (session_id, role, content, file_info)
+                        VALUES (%s, 'user', %s, %s)
+                    """, (session_id, request.content, json.dumps(file_info) if file_info else None))
+                    
+                    # Save assistant message
+                    cursor.execute("""
+                        INSERT INTO brandsxai_claim_messages (session_id, role, content, codes_extracted)
+                        VALUES (%s, 'assistant', %s, %s)
+                    """, (session_id, assistant_text, json.dumps(new_codes) if new_codes else None))
+                    
+                    # Update session codes
+                    cursor.execute("""
+                        UPDATE brandsxai_claim_sessions 
+                        SET extracted_codes = %s, updated_at = NOW()
+                        WHERE id = %s
+                    """, (json.dumps(updated_codes), session_id))
+                    
+                    mysql_conn.commit()
+            except Exception as e:
+                logger.error(f"MySQL save chat error: {e}")
+            finally:
+                mysql_conn.close()
+        else:
+            # MongoDB fallback
+            await mongo_db.brandsxai_claim_messages.insert_one({
+                "session_id": session_id,
+                "role": "user",
+                "content": request.content,
+                "file_info": file_info if file_info else None,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            await mongo_db.brandsxai_claim_messages.insert_one({
+                "session_id": session_id,
+                "role": "assistant",
+                "content": assistant_text,
+                "codes_extracted": new_codes if new_codes else None,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            await mongo_db.brandsxai_claim_sessions.update_one(
+                {"id": session_id},
+                {"$set": {"extracted_codes": updated_codes, "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+        
+        return {
+            "response": assistant_text,
+            "new_codes": new_codes,
+            "codes_removed": codes_to_remove,
+            "all_codes": updated_codes
+        }
+        
+    except ImportError as e:
+        logger.error(f"Import error: {e}")
+        raise HTTPException(status_code=500, detail="AI service not available")
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+
+@api_router.put("/claim-processing/sessions/{session_id}/codes")
+async def update_session_codes(
+    session_id: str,
+    request: CodeUpdateRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Manually update the codes in a session"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    user_id = int(current_user.get('sub'))
+    
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE brandsxai_claim_sessions 
+                    SET extracted_codes = %s, updated_at = NOW()
+                    WHERE id = %s AND user_id = %s
+                """, (json.dumps(request.codes), session_id, user_id))
+                mysql_conn.commit()
+                
+                if cursor.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Session not found")
+                
+                return {"success": True, "codes": request.codes, "db_source": "mysql"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"MySQL update codes error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    # MongoDB fallback
+    result = await mongo_db.brandsxai_claim_sessions.update_one(
+        {"id": session_id, "user_id": user_id},
+        {"$set": {"extracted_codes": request.codes, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return {"success": True, "codes": request.codes, "db_source": "mongodb"}
+
+@api_router.get("/claim-processing/icd10/search")
+async def search_icd10_codes(q: str = "", current_user: dict = Depends(get_current_user)):
+    """Search ICD-10 codes for autocomplete"""
+    if not current_user:
+        raise HTTPException(status_code=403, detail="Authentication required")
+    
+    if len(q) < 2:
+        return {"codes": []}
+    
+    q_lower = q.lower()
+    results = []
+    
+    for code, desc in ICD10_COMMON_CODES.items():
+        if q_lower in code.lower() or q_lower in desc.lower():
+            results.append({"code": code, "description": desc})
+    
+    return {"codes": results[:20]}
+
+@api_router.get("/claim-processing/sessions/{session_id}/export")
+async def export_session_codes(session_id: str, current_user: dict = Depends(get_current_user)):
+    """Export session codes as Excel file"""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    
+    user_id = int(current_user.get('sub'))
+    
+    # Get session
+    session = None
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("SELECT * FROM brandsxai_claim_sessions WHERE id = %s AND user_id = %s", (session_id, user_id))
+                session = cursor.fetchone()
+        except Exception as e:
+            logger.error(f"MySQL export error: {e}")
+        finally:
+            mysql_conn.close()
+    
+    if not session:
+        session = await mongo_db.brandsxai_claim_sessions.find_one({"id": session_id, "user_id": user_id})
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    codes = session.get('extracted_codes', [])
+    if isinstance(codes, str):
+        codes = json.loads(codes)
+    
+    # Create Excel file
+    import io
+    try:
+        import openpyxl
+        from openpyxl import Workbook
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "ICD-10 Codes"
+        
+        # Header row
+        ws['A1'] = "ICD-10 Codes"
+        
+        # Single row with all codes
+        code_list = [c.get('code', '') for c in codes]
+        ws['A2'] = ", ".join(code_list)
+        
+        # Second sheet with details
+        ws2 = wb.create_sheet("Code Details")
+        ws2['A1'] = "Code"
+        ws2['B1'] = "Description"
+        ws2['C1'] = "Source Text"
+        
+        for i, code in enumerate(codes, start=2):
+            ws2[f'A{i}'] = code.get('code', '')
+            ws2[f'B{i}'] = code.get('description', '')
+            ws2[f'C{i}'] = code.get('source_text', '')
+        
+        # Save to buffer
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        from fastapi.responses import StreamingResponse
+        
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=icd10_codes_{session_id[:8]}.xlsx"}
+        )
+    except ImportError:
+        # Fallback to CSV
+        import csv
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["ICD-10 Codes"])
+        writer.writerow([", ".join([c.get('code', '') for c in codes])])
+        
+        from fastapi.responses import Response
+        return Response(
+            content=buffer.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=icd10_codes_{session_id[:8]}.csv"}
+        )
 
 # ==================== UTILITY ====================
 

@@ -26,11 +26,13 @@ export async function checkForErrors(page: Page): Promise<string[]> {
 
 export async function loginAsBrandUser(page: Page) {
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('textbox', { name: /username/i }).fill('mukesh');
-  await page.getByRole('textbox', { name: /password/i }).fill('mukesh123');
-  await page.getByRole('button', { name: /sign in|login/i }).click();
+  await page.waitForLoadState('networkidle');
+  await page.locator('input').first().fill('mukesh');
+  await page.locator('input').nth(1).fill('mukesh123');
+  await page.getByRole('button', { name: /continue/i }).click();
   // Wait for dashboard to load
-  await expect(page.locator('.dashboard, [class*="dashboard"]').first()).toBeVisible({ timeout: 10000 });
+  await page.waitForLoadState('networkidle');
+  await expect(page.locator('.dashboard').first()).toBeVisible();
 }
 
 export async function navigateToCampaign(page: Page) {
@@ -38,4 +40,19 @@ export async function navigateToCampaign(page: Page) {
   await page.getByRole('button', { name: /campaign/i }).click();
   // Wait for campaign list or loading to complete
   await expect(page.getByTestId('campaign-list').or(page.getByTestId('campaign-pipeline'))).toBeVisible({ timeout: 10000 });
+}
+
+export async function navigateToClaimProcessing(page: Page) {
+  // Click on Claim Processing icon in sidebar (2nd button)
+  await page.locator('.dashboard-sidebar button').nth(1).click({ force: true });
+  await page.waitForLoadState('networkidle');
+  // Wait for claim processing page to load
+  await expect(page.getByTestId('claim-processing-page')).toBeVisible();
+}
+
+export async function createClaimSession(page: Page) {
+  // Click start new session button
+  await page.getByRole('button', { name: /start new session/i }).click();
+  // Wait for chat input to appear (indicates session is active)
+  await expect(page.getByTestId('chat-input')).toBeVisible();
 }

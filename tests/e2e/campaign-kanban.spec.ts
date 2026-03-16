@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Campaign Management - Kanban Board', () => {
-  const baseURL = 'https://voice-campaign-hub-3.preview.emergentagent.com';
+  const baseURL = 'https://claim-ai-1.preview.emergentagent.com';
   
   test.beforeEach(async ({ page }) => {
     // Remove Emergent badge if present
