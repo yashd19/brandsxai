@@ -1726,26 +1726,25 @@ async def chat_with_claim_session(
     
     # Prepare the AI prompt
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContent
-        import uuid as uuid_module
-        
-        emergent_key = os.environ.get('EMERGENT_LLM_KEY')
-        if not emergent_key:
+        import google.generativeai as genai
+        import asyncio as _asyncio
+
+        gemini_key = os.environ.get('EMERGENT_LLM_KEY') or os.environ.get('GOOGLE_API_KEY')
+        if not gemini_key:
             raise HTTPException(status_code=500, detail="AI service not configured")
-        
-        # Build system message for the AI
+
+        genai.configure(api_key=gemini_key)
+
         system_message = """You are an expert ICD-10 medical coding assistant. 
 Your task is to help extract and manage ICD-10 codes from clinical documents.
 When users provide documents, extract all relevant ICD-10 codes.
 When users ask questions or provide feedback, respond helpfully."""
-        
-        # Initialize chat with proper method chaining
-        chat = LlmChat(
-            api_key=emergent_key,
-            session_id=f"claim-{session_id}-{uuid_module.uuid4().hex[:8]}",
-            system_message=system_message
-        ).with_model("gemini", "gemini-2.5-flash")
-        
+
+        model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",
+            system_instruction=system_message
+        )
+
         # Build context message
         context = f"""Current session has these extracted codes: {json.dumps(existing_codes)}
 
@@ -1766,26 +1765,28 @@ Always respond in this JSON format:
   "codes_to_remove": ["X00.0"]
 }}
 """
-        
-        # Build message with file content if present
-        file_contents = []
+
+        # Build parts list (text + optional file attachments)
+        parts = [context]
         file_info = []
         if request.file_data:
             for f in request.file_data:
-                file_contents.append(FileContent(
-                    content_type=f.get('content_type', 'application/pdf'),
-                    file_content_base64=f.get('base64_data', '')
-                ))
+                parts.append({
+                    "inline_data": {
+                        "mime_type": f.get('content_type', 'application/pdf'),
+                        "data": f.get('base64_data', '')
+                    }
+                })
                 file_info.append({
                     "filename": f.get('filename', 'document'),
                     "content_type": f.get('content_type')
                 })
-        
-        user_msg = UserMessage(text=context, file_contents=file_contents if file_contents else None)
-        
-        # Send to AI
-        response = await chat.send_message(user_msg)
-        response_text = str(response)
+        else:
+            file_info = []
+
+        # Send to AI (run sync SDK in thread to avoid blocking the event loop)
+        ai_result = await _asyncio.to_thread(model.generate_content, parts)
+        response_text = ai_result.text
         
         # Parse AI response
         try:
