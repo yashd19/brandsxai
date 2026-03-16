@@ -90,6 +90,17 @@ BrandsXAI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featur
   - InvenIQ AI → /adorniq
   - Bridal Vision AI → /adorniq
   - JewelMatch AI → /adorniq
+- [x] **Claim Processing Feature** (March 16, 2026) - AI-powered ICD-10 code extraction
+  - Full-featured UI with dark theme, chat interface, code pills panel
+  - Upload clinical documents (PDF, images) for code extraction
+  - AI-powered extraction using Gemini 2.5 Flash via emergentintegrations
+  - Interactive code pills with remove (X) buttons
+  - Manual code addition with ICD-10 search/autocomplete
+  - Session history sidebar for previous sessions
+  - Excel export functionality (.xlsx with single-row codes + detailed sheet)
+  - Conversational AI refinement - ask questions, request corrections
+  - Backend: 17 pytest tests, Frontend: 12 E2E Playwright tests
+  - Feature assigned to user `mukesh` under "Claim Processing" sidebar
 
 ### Pending Tasks
 - [ ] **P1**: AI Post-Call Processing (webhooks for call summaries/recordings)
@@ -122,6 +133,15 @@ BrandsXAI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featur
 - `GET /api/contacts` - Get all contacts for brand
 - `GET /api/sessions/calls` - Get call sessions with stats
 
+### Claim Processing
+- `POST /api/claim-processing/sessions` - Create new session
+- `GET /api/claim-processing/sessions` - List user's sessions
+- `GET /api/claim-processing/sessions/{id}` - Get session with messages
+- `POST /api/claim-processing/sessions/{id}/chat` - Send message, AI extracts codes
+- `PUT /api/claim-processing/sessions/{id}/codes` - Update codes (add/remove)
+- `GET /api/claim-processing/icd10/search?q=` - Search ICD-10 codes
+- `GET /api/claim-processing/sessions/{id}/export` - Download Excel file
+
 ## Key Files
 - `/app/backend/server.py` - API server
 - `/app/frontend/src/pages/Campaign.jsx` - Campaign management
@@ -129,6 +149,8 @@ BrandsXAI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featur
 - `/app/frontend/src/pages/Contacts.jsx` - All contacts view
 - `/app/frontend/src/pages/Dashboards.jsx` - KPI Dashboard with charts
 - `/app/frontend/src/pages/Dashboard.jsx` - Dashboard container
+- `/app/frontend/src/pages/ClaimProcessing.jsx` - ICD-10 Code Extractor UI
+- `/app/frontend/src/pages/ClaimProcessing.css` - Claim Processing styles
 - `/app/frontend/src/pages/FoundAI.jsx` - FoundAI GEO product page
 - `/app/frontend/src/pages/FoundAI.css` - FoundAI styles (exact replica)
 - `/app/frontend/src/pages/SettleAI.jsx` - SettleAI product page
