@@ -469,12 +469,17 @@ const ClaimProcessing = () => {
                   >
                     <Upload size={20} />
                   </button>
-                  <input
-                    type="text"
-                    placeholder="Ask about codes or describe what's missing..."
+                  <textarea
+                    rows={1}
+                    placeholder="Paste a clinical note, or ask about codes and describe what's missing..."
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                      }
+                    }}
                     disabled={isSending}
                     data-testid="chat-input"
                   />

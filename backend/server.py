@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import re
 import logging
 import json
 from pathlib import Path
@@ -221,6 +222,7 @@ def init_mysql_tables(connection):
                     title VARCHAR(255) DEFAULT 'New Claim Session',
                     status ENUM('active', 'completed', 'archived') DEFAULT 'active',
                     extracted_codes JSON,
+                    source_document LONGTEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_claim_user (user_id),
@@ -242,6 +244,24 @@ def init_mysql_tables(connection):
                     INDEX idx_msg_session (session_id)
                 )
             """)
+
+            # Migrate: existing sessions predate source_document. Isolated so a failed
+            # ALTER (e.g. insufficient grants) cannot abort the rest of this function.
+            try:
+                cursor.execute("""
+                    SELECT COUNT(*) AS c FROM information_schema.columns
+                    WHERE table_schema = DATABASE()
+                      AND table_name = 'brandsxai_claim_sessions'
+                      AND column_name = 'source_document'
+                """)
+                if not (cursor.fetchone() or {}).get('c'):
+                    cursor.execute("""
+                        ALTER TABLE brandsxai_claim_sessions
+                        ADD COLUMN source_document LONGTEXT AFTER extracted_codes
+                    """)
+                    logger.info("Migrated: added source_document to brandsxai_claim_sessions")
+            except Exception as e:
+                logger.error(f"source_document migration skipped: {e}")
             
             # Insert default admin if not exists
             cursor.execute("SELECT id FROM brandsxai_admins WHERE username = 'madoveradmin'")
@@ -448,6 +468,7 @@ class ClaimSessionCreate(BaseModel):
 class ClaimMessage(BaseModel):
     content: str
     file_data: Optional[List[dict]] = None  # [{filename, content_type, base64_data}]
+    mode: Optional[str] = None  # "extract" | "refine"; inferred when omitted
 
 class ICD10Code(BaseModel):
     code: str
@@ -1480,7 +1501,8 @@ async def get_session_calls(current_user: dict = Depends(get_current_user)):
 
 # ==================== CLAIM PROCESSING ====================
 
-# ICD-10 Code validation data (common codes for autocomplete)
+# Autocomplete suggestions only. This is not a validation source: a complete
+# ICD-10-CM table with billable flags is required before codes can be verified.
 ICD10_COMMON_CODES = {
     "E11.9": "Type 2 diabetes mellitus without complications",
     "I10": "Essential (primary) hypertension",
@@ -1489,8 +1511,11 @@ ICD10_COMMON_CODES = {
     "K21.9": "Gastro-esophageal reflux disease without esophagitis",
     "E53.8": "Deficiency of other specified B group vitamins",
     "Z98.84": "Bariatric surgery status",
+    "R05.3": "Chronic cough",
     "R05.9": "Cough, unspecified",
-    "M54.5": "Low back pain",
+    "M54.50": "Low back pain, unspecified",
+    "M54.51": "Vertebrogenic low back pain",
+    "M54.59": "Other low back pain",
     "F32.9": "Major depressive disorder, single episode, unspecified",
     "J45.909": "Unspecified asthma, uncomplicated",
     "E78.5": "Hyperlipidemia, unspecified",
@@ -1501,37 +1526,196 @@ ICD10_COMMON_CODES = {
     "R10.9": "Unspecified abdominal pain",
     "R51.9": "Headache, unspecified",
     "Z87.891": "Personal history of nicotine dependence",
+    "Z79.01": "Long term (current) use of anticoagulants",
+    "Z79.02": "Long term (current) use of antithrombotics/antiplatelets",
+    "Z79.4": "Long term (current) use of insulin",
+    "Z79.52": "Long term (current) use of systemic steroids",
     "Z79.899": "Other long term (current) drug therapy",
 }
 
-ICD10_EXTRACTION_PROMPT = """You are an expert medical coder specializing in ICD-10 code extraction from clinical notes.
+# A pasted note this long is treated as a document to code rather than a chat message.
+NOTE_TEXT_MIN_CHARS = 400
 
-Your task is to analyze the provided clinical document and extract ALL relevant ICD-10 codes.
+# Messages replayed into the prompt so corrections keep their context.
+CLAIM_HISTORY_TURNS = 6
 
-IMPORTANT GUIDELINES:
-1. Extract codes for ALL documented conditions, diagnoses, and symptoms
-2. Include codes from ALL sections: Chief Complaint, History, Assessment & Plan, Review of Systems, etc.
-3. Include both primary and secondary diagnoses
-4. Include codes for chronic conditions mentioned (even if "controlled" or "stable")
-5. Include codes for surgical history (Z codes)
-6. Include codes for current medications context
-7. Be thorough - it's better to include a code that can be removed than to miss one
+ICD10_CODING_RULES = """You are a certified medical coder assigning ICD-10-CM codes for claim submission.
 
-For each code, provide:
-- code: The ICD-10 code (e.g., "E11.9")
-- description: Brief description of what the code represents
-- source_text: The exact phrase or sentence from the document that supports this code
-- confidence: Your confidence level (0.0-1.0)
+CODE VALIDITY
+- Assign only billable, submittable codes at full leaf-level specificity.
+- Never assign a category or subcategory header. When a category has been expanded into
+  children you must choose a child. M54.5, R05, K59.0 and Z99.8 are headers, not codes.
+- `description` must be the official ICD-10-CM title of that exact code, not a restatement
+  of the clinical phrase. If you cannot state the official title, lower `confidence`.
+- Choose the code that names the documented condition directly over an "other specified" or
+  "unspecified" sibling. Documented retinopathy in type 1 diabetes is E10.319, not E10.39.
 
-Respond ONLY with a JSON array of codes. No other text.
-Example format:
-[
-  {"code": "E11.9", "description": "Type 2 diabetes mellitus without complications", "source_text": "Patient has history of DM2", "confidence": 0.95},
-  {"code": "I10", "description": "Essential hypertension", "source_text": "HTN controlled on lisinopril", "confidence": 0.9}
-]
+COMPLETENESS
+- Code the header/problem list AND the Assessment & Plan. A problem that appears only in the
+  header problem list is still reportable and must not be skipped.
+- Include chronic conditions documented as "stable", "controlled", or "at baseline".
+- Put anything you cannot confidently code into `unmapped_problems` instead of dropping it.
 
-If no valid codes can be extracted, return an empty array: []
-"""
+REQUIRED PAIRINGS AND STATUS CODES
+- Diabetes with ulcer (E10.62-/E11.62-) requires an additional ulcer site code (L97.-/L98.-).
+- Coronary disease with documented bypass graft status (Z95.1) uses the graft codes I25.81-,
+  not native-vessel I25.10.
+- Transplants, implants, and devices each get their own status code (Z94.- transplanted organ,
+  Z95.- cardiac graft/device, Z96.- implants, Z99.- device dependence).
+- Every chronic medication in the note gets its long term drug therapy code: anticoagulants
+  Z79.01, antiplatelets Z79.02, insulin Z79.4, systemic steroids Z79.52, immunosuppressants
+  Z79.62-, bisphosphonates Z79.83. Z79.899 is only for drugs with no specific code; it is
+  never a substitute for the specific ones.
+- Before you answer, re-read the codes you just assigned and check these interactions against
+  each other. A status code you assigned changes which diagnosis code is correct.
+
+EVIDENCE
+- Every code carries `source_text` quoted verbatim from the note. Never paraphrase and never
+  invent supporting text. If you cannot quote the note, do not assign the code."""
+
+EXTRACT_TASK = """TASK: Extract ICD-10-CM codes from the clinical note above.
+Pass over the note twice: first the header/problem list line by line, then the Assessment &
+Plan section by section. Return everything you find in `new_codes` and leave
+`codes_to_remove` empty. Set `response_text` to a short summary for the user."""
+
+REFINE_TASK = """TASK: The user is reviewing codes that were already extracted. Apply their feedback.
+- Codes to add go in `new_codes`; codes to retract go in `codes_to_remove`.
+- To correct a code, put the wrong one in `codes_to_remove` and the right one in `new_codes`.
+- Re-read the source note above and quote it in `source_text`; do not code from memory of
+  this conversation alone.
+- If the user only asked a question, answer it in `response_text` and leave both arrays empty."""
+
+CLAIM_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "response_text": {"type": "string"},
+        "new_codes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string"},
+                    "description": {"type": "string"},
+                    "source_text": {"type": "string"},
+                    "confidence": {"type": "number"},
+                },
+                "required": ["code", "description", "source_text", "confidence"],
+            },
+        },
+        "codes_to_remove": {"type": "array", "items": {"type": "string"}},
+        "unmapped_problems": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["response_text", "new_codes", "codes_to_remove", "unmapped_problems"],
+}
+
+
+def normalize_icd10_code(code: str) -> str:
+    """Canonical key for comparing codes, so I25.10 / i2510 / 'I25.10 ' collapse to one."""
+    return re.sub(r'[^A-Z0-9]', '', (code or '').upper())
+
+
+def merge_extracted_codes(existing: List[dict], new_codes: List[dict], codes_to_remove: List[str]) -> List[dict]:
+    """Apply an AI turn to the session's code list, matching on normalized codes."""
+    removal_keys = {normalize_icd10_code(c) for c in codes_to_remove if c}
+    merged, index = [], {}
+
+    for entry in existing:
+        key = normalize_icd10_code(entry.get('code'))
+        if not key or key in removal_keys or key in index:
+            continue
+        index[key] = len(merged)
+        merged.append(entry)
+
+    for entry in new_codes:
+        key = normalize_icd10_code(entry.get('code'))
+        if not key or key in removal_keys:
+            continue
+        entry = {**entry, 'code': str(entry.get('code', '')).strip().upper()}
+        if key in index:
+            merged[index[key]] = entry  # a re-emitted code carries fresher evidence
+        else:
+            index[key] = len(merged)
+            merged.append(entry)
+
+    return merged
+
+
+def format_codes_for_prompt(codes: List[dict]) -> str:
+    if not codes:
+        return "(none yet)"
+    return "\n".join(
+        f"- {c.get('code', '?')}: {c.get('description', '')}".rstrip() for c in codes
+    )
+
+
+async def load_claim_history(session_id: str, limit: int) -> str:
+    """Recent turns, oldest first, so follow-up corrections have their context."""
+    rows, from_mysql = [], False
+    mysql_conn = try_mysql_connection()
+    if mysql_conn:
+        try:
+            with mysql_conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT role, content FROM brandsxai_claim_messages
+                    WHERE session_id = %s
+                    ORDER BY id DESC
+                    LIMIT %s
+                """, (session_id, limit))
+                rows = list(reversed(cursor.fetchall() or []))
+                from_mysql = True
+        except Exception as e:
+            logger.error(f"MySQL load claim history error: {e}")
+        finally:
+            mysql_conn.close()
+
+    if not from_mysql:
+        docs = await mongo_db.brandsxai_claim_messages.find(
+            {"session_id": session_id}, {"_id": 0, "role": 1, "content": 1}
+        ).sort("created_at", -1).limit(limit).to_list(limit)
+        rows = list(reversed(docs))
+
+    return "\n".join(
+        f"{r.get('role', 'user')}: {(r.get('content') or '')[:600]}" for r in rows
+    )
+
+
+def parse_claim_ai_response(ai_result) -> dict:
+    """Read the model's JSON, failing loudly so a bad turn can never look like zero codes."""
+    candidates = getattr(ai_result, 'candidates', None) or []
+    finish_reason = getattr(candidates[0], 'finish_reason', None) if candidates else None
+
+    try:
+        raw = ai_result.text or ""
+    except Exception:
+        raw = ""
+
+    if not raw.strip():
+        logger.error(
+            f"Claim AI returned no text (finish_reason={finish_reason}, "
+            f"prompt_feedback={getattr(ai_result, 'prompt_feedback', None)})"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"The AI returned an empty response (finish_reason={finish_reason}). Nothing was saved; please retry."
+        )
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        logger.error(f"Claim AI returned non-JSON (finish_reason={finish_reason}): {raw[:2000]}")
+        raise HTTPException(
+            status_code=502,
+            detail="The AI response could not be parsed. Nothing was saved; please retry."
+        ) from e
+
+    if not isinstance(parsed, dict):
+        logger.error(f"Claim AI returned {type(parsed).__name__}, expected an object: {raw[:2000]}")
+        raise HTTPException(
+            status_code=502,
+            detail="The AI response had an unexpected shape. Nothing was saved; please retry."
+        )
+
+    return parsed
 
 @api_router.post("/claim-processing/sessions")
 async def create_claim_session(
@@ -1723,6 +1907,22 @@ async def chat_with_claim_session(
     existing_codes = session.get('extracted_codes', [])
     if isinstance(existing_codes, str):
         existing_codes = json.loads(existing_codes)
+
+    # A long pasted message is the note itself, not chat. Keep it so later turns can re-read it.
+    source_document = session.get('source_document') or ""
+    pasted_note = (
+        request.content.strip()
+        if not request.file_data and len(request.content.strip()) >= NOTE_TEXT_MIN_CHARS
+        else ""
+    )
+    if pasted_note:
+        source_document = pasted_note
+
+    mode = (request.mode or "").strip().lower()
+    if mode not in ("extract", "refine"):
+        mode = "extract" if (request.file_data or pasted_note) else "refine"
+
+    history = await load_claim_history(session_id, CLAIM_HISTORY_TURNS)
     
     # Prepare the AI prompt
     try:
@@ -1735,39 +1935,32 @@ async def chat_with_claim_session(
 
         genai.configure(api_key=gemini_key)
 
-        system_message = """You are an expert ICD-10 medical coding assistant. 
-Your task is to help extract and manage ICD-10 codes from clinical documents.
-When users provide documents, extract all relevant ICD-10 codes.
-When users ask questions or provide feedback, respond helpfully."""
-
         model = genai.GenerativeModel(
             model_name="gemini-2.5-flash",
-            system_instruction=system_message
+            system_instruction=ICD10_CODING_RULES,
+            generation_config={
+                "temperature": 0.1,
+                "max_output_tokens": 16384,
+                "response_mime_type": "application/json",
+                "response_schema": CLAIM_RESPONSE_SCHEMA,
+            }
         )
 
-        # Build context message
-        context = f"""Current session has these extracted codes: {json.dumps(existing_codes)}
-
-User message: {request.content}
-
-{ICD10_EXTRACTION_PROMPT if request.file_data else ""}
-
-If the user is asking a question, answer it helpfully. 
-If they're providing feedback about codes (wrong, missing, etc.), acknowledge and provide the corrected code(s).
-If they attach documents, extract all ICD-10 codes.
-
-Always respond in this JSON format:
-{{
-  "response_text": "Your helpful response to the user",
-  "new_codes": [
-    {{"code": "X00.0", "description": "...", "source_text": "...", "confidence": 0.9}}
-  ],
-  "codes_to_remove": ["X00.0"]
-}}
-"""
+        sections = []
+        if source_document:
+            sections.append(f"SOURCE CLINICAL NOTE:\n{source_document}")
+        if request.file_data:
+            sections.append("SOURCE CLINICAL NOTE: also provided as the attached document(s).")
+        sections.append(f"CODES CURRENTLY ON THIS CLAIM:\n{format_codes_for_prompt(existing_codes)}")
+        if history:
+            sections.append(f"EARLIER IN THIS CONVERSATION:\n{history}")
+        sections.append(
+            "USER MESSAGE:\n" + ("(the clinical note above)" if pasted_note else request.content)
+        )
+        sections.append(EXTRACT_TASK if mode == "extract" else REFINE_TASK)
 
         # Build parts list (text + optional file attachments)
-        parts = [context]
+        parts = ["\n\n".join(sections)]
         file_info = []
         if request.file_data:
             for f in request.file_data:
@@ -1781,35 +1974,23 @@ Always respond in this JSON format:
                     "filename": f.get('filename', 'document'),
                     "content_type": f.get('content_type')
                 })
-        else:
-            file_info = []
 
         # Send to AI (run sync SDK in thread to avoid blocking the event loop)
         ai_result = await _asyncio.to_thread(model.generate_content, parts)
-        response_text = ai_result.text
-        
-        # Parse AI response
-        try:
-            # Try to extract JSON from response
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', response_text)
-            if json_match:
-                ai_response = json.loads(json_match.group())
-            else:
-                ai_response = {"response_text": response_text, "new_codes": [], "codes_to_remove": []}
-        except json.JSONDecodeError:
-            ai_response = {"response_text": response_text, "new_codes": [], "codes_to_remove": []}
-        
-        assistant_text = ai_response.get('response_text', response_text)
-        new_codes = ai_response.get('new_codes', [])
-        codes_to_remove = ai_response.get('codes_to_remove', [])
-        
-        # Update codes list
-        updated_codes = [c for c in existing_codes if c.get('code') not in codes_to_remove]
-        existing_code_set = {c.get('code') for c in updated_codes}
-        for nc in new_codes:
-            if nc.get('code') and nc.get('code') not in existing_code_set:
-                updated_codes.append(nc)
+        ai_response = parse_claim_ai_response(ai_result)
+
+        assistant_text = ai_response.get('response_text') or ""
+        new_codes = ai_response.get('new_codes') or []
+        codes_to_remove = ai_response.get('codes_to_remove') or []
+        unmapped_problems = ai_response.get('unmapped_problems') or []
+
+        if unmapped_problems:
+            assistant_text = (
+                f"{assistant_text}\n\nCould not be coded confidently: "
+                + "; ".join(unmapped_problems)
+            ).strip()
+
+        updated_codes = merge_extracted_codes(existing_codes, new_codes, codes_to_remove)
         
         # Save to database
         mysql_conn = try_mysql_connection()
@@ -1834,6 +2015,17 @@ Always respond in this JSON format:
                         SET extracted_codes = %s, updated_at = NOW()
                         WHERE id = %s
                     """, (json.dumps(updated_codes), session_id))
+
+                    # Best-effort: never let the newer column jeopardise saving codes
+                    if source_document:
+                        try:
+                            cursor.execute("""
+                                UPDATE brandsxai_claim_sessions
+                                SET source_document = %s
+                                WHERE id = %s
+                            """, (source_document, session_id))
+                        except Exception as e:
+                            logger.error(f"Could not persist source_document: {e}")
                     
                     mysql_conn.commit()
             except Exception as e:
@@ -1858,19 +2050,27 @@ Always respond in this JSON format:
             })
             await mongo_db.brandsxai_claim_sessions.update_one(
                 {"id": session_id},
-                {"$set": {"extracted_codes": updated_codes, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                {"$set": {
+                    "extracted_codes": updated_codes,
+                    "source_document": source_document or None,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }}
             )
         
         return {
             "response": assistant_text,
+            "mode": mode,
             "new_codes": new_codes,
             "codes_removed": codes_to_remove,
+            "unmapped_problems": unmapped_problems,
             "all_codes": updated_codes
         }
         
     except ImportError as e:
         logger.error(f"Import error: {e}")
         raise HTTPException(status_code=500, detail="AI service not available")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
