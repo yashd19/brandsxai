@@ -1571,7 +1571,12 @@ REQUIRED PAIRINGS AND STATUS CODES
 
 EVIDENCE
 - Every code carries `source_text` quoted verbatim from the note. Never paraphrase and never
-  invent supporting text. If you cannot quote the note, do not assign the code."""
+  invent supporting text. If you cannot quote the note, do not assign the code.
+
+RESPONSE TEXT
+- `response_text` describes what you coded and any judgement calls you made. Never state how
+  many codes you assigned and never list them: the interface counts and lists them, and your
+  count will contradict it whenever two mentions of one code are merged into a single entry."""
 
 EXTRACT_TASK = """TASK: Extract ICD-10-CM codes from the clinical note above.
 Pass over the note twice: first the header/problem list line by line, then the Assessment &

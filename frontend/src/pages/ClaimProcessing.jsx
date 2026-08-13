@@ -9,6 +9,19 @@ import './ClaimProcessing.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
+const normalizeCode = (code) => (code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// A note can document one condition in several sections, so the AI returns a mention per
+// section while the claim keeps a single entry per code. Count entries, not mentions.
+const summarizeMentions = (mentions) => {
+  const codes = new Set();
+  (mentions || []).forEach((m) => {
+    const key = normalizeCode(m?.code);
+    if (key) codes.add(key);
+  });
+  return { applied: codes.size, merged: (mentions?.length || 0) - codes.size };
+};
+
 const ClaimProcessing = () => {
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -184,8 +197,9 @@ const ClaimProcessing = () => {
         // Update extracted codes
         setExtractedCodes(data.all_codes || []);
         
-        if (data.new_codes?.length > 0) {
-          toast.success(`Extracted ${data.new_codes.length} new code(s)`);
+        const { applied } = summarizeMentions(data.new_codes);
+        if (applied > 0) {
+          toast.success(`Applied ${applied} code(s)`);
         }
       } else {
         toast.error('Failed to process message');
@@ -400,7 +414,9 @@ const ClaimProcessing = () => {
                     </div>
                   )}
                   
-                  {messages.map((msg, idx) => (
+                  {messages.map((msg, idx) => {
+                    const { applied, merged } = summarizeMentions(msg.codes_extracted);
+                    return (
                     <div key={idx} className={`cp-message ${msg.role}`}>
                       <div className="cp-message-content">
                         {msg.role === 'user' && msg.file_info?.length > 0 && (
@@ -414,16 +430,22 @@ const ClaimProcessing = () => {
                           </div>
                         )}
                         <p>{msg.content}</p>
-                        {msg.codes_extracted?.length > 0 && (
+                        {applied > 0 && (
                           <div className="cp-extracted-preview">
                             <span className="cp-extracted-label">
-                              <CheckCircle size={14} /> Extracted {msg.codes_extracted.length} code(s)
+                              <CheckCircle size={14} /> Applied {applied} code(s) to the claim
                             </span>
+                            {merged > 0 && (
+                              <span className="cp-extracted-note">
+                                {merged} repeat mention(s) of the same code merged
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                   
                   {isSending && (
                     <div className="cp-message assistant loading">
@@ -585,7 +607,7 @@ const ClaimProcessing = () => {
 
             {extractedCodes.length > 0 && (
               <div className="cp-codes-summary">
-                <span>{extractedCodes.length} code(s) extracted</span>
+                <span>{extractedCodes.length} code(s) on the claim</span>
               </div>
             )}
           </div>

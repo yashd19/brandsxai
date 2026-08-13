@@ -380,6 +380,14 @@
   color: #4ade80;
 }
 
+.cp-extracted-note {
+  display: block;
+  margin-top: 0.35rem;
+  padding-left: 1.5rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
 /* Upload Preview */
 .cp-upload-preview {
   padding: 0.75rem 1rem;
