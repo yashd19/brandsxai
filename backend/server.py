@@ -426,6 +426,20 @@ async def init_mongodb_collections():
                 fids.append(3)
                 await mongo_db.brandsxai_users.update_one({"_id": mukesh['_id']}, {"$set": {"feature_ids": fids}})
 
+        # Dedicated test user (MongoDB fallback ensures login works even when MySQL is unavailable)
+        test_user = await mongo_db.brandsxai_users.find_one({"username": "testuser"})
+        if not test_user:
+            t_hash = bcrypt.hashpw('test123'.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
+            await mongo_db.brandsxai_users.insert_one({
+                "id": 99, "username": "testuser", "email": "testuser@brandx.com",
+                "password_hash": t_hash, "brand_id": 1, "feature_ids": [1, 2, 3],
+                "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        else:
+            fids = test_user.get('feature_ids', []) or []
+            if set([1, 2, 3]) - set(fids):
+                await mongo_db.brandsxai_users.update_one({"_id": test_user['_id']}, {"$set": {"feature_ids": [1, 2, 3]}})
+
         # Seed default WhatsApp message templates (global, brand_id=None)
         wa_tpl_count = await mongo_db.brandsxai_wa_templates.count_documents({})
         if wa_tpl_count == 0:
