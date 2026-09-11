@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Phone, FileCheck, Users, LayoutDashboard, Clock, LogOut, ChevronRight, Megaphone, FileSearch } from 'lucide-react';
+import { Phone, FileCheck, Users, LayoutDashboard, Clock, LogOut, ChevronRight, Megaphone, FileSearch, MessageCircle } from 'lucide-react';
 import Campaign from './Campaign';
 import Session from './Session';
 import Contacts from './Contacts';
 import Dashboards from './Dashboards';
 import ClaimProcessing from './ClaimProcessing';
+import WhatsAppAI from './WhatsAppAI';
 import './Dashboard.css';
 
 const iconMap = {
@@ -15,7 +16,8 @@ const iconMap = {
   LayoutDashboard: LayoutDashboard,
   Clock: Clock,
   Megaphone: Megaphone,
-  FileSearch: FileSearch
+  FileSearch: FileSearch,
+  MessageCircle: MessageCircle
 };
 
 const Dashboard = () => {
@@ -144,6 +146,8 @@ const Dashboard = () => {
             <Contacts />
           ) : activePage?.name === 'Code Extractor' || activePage?.route?.includes('claim-processing') ? (
             <ClaimProcessing />
+          ) : activePage?.name === 'Conversations' || activePage?.route?.includes('whatsapp-ai') ? (
+            <WhatsAppAI />
           ) : activePage ? (
             <div className="page-placeholder">
               <div className="placeholder-icon">

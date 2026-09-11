@@ -102,6 +102,19 @@ BrandsXAI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featur
   - Backend: 17 pytest tests, Frontend: 12 E2E Playwright tests
   - Feature assigned to user `mukesh` under "Claim Processing" sidebar
 
+- [x] **WhatsApp AI Feature** (new) - AI-assisted WhatsApp Business conversations
+  - New sidebar feature "WhatsApp AI" (icon MessageCircle), page "Conversations"
+  - WhatsApp-style 3-pane UI: thread list | chat | lead context panel
+  - First message = approved template (bot); subsequent messages typed by human rep (customer sees one business number)
+  - Real-time via polling (list 4s, active thread 2.5s) with optimistic send
+  - Claude (claude-sonnet-4-6 via emergentintegrations + EMERGENT_LLM_KEY) suggested replies (3 options, contextual, dismissible, non-intrusive) to drive showroom visits
+  - Lead intent + temperature (hot/warm/cold), on-demand AI conversation summary + next step
+  - Book Showroom Visit (creates appointment, sends confirmation, moves stage to "Visit Booked")
+  - Rich sends (image url), 6 default message templates seeded
+  - WhatsApp Business API (Meta Cloud API): send template/text + inbound webhook (verify + signed receive). Runs in SIMULATION mode until Meta creds provided
+  - New Mongo collections: brandsxai_wa_templates, brandsxai_wa_conversations, brandsxai_wa_messages, brandsxai_wa_appointments
+  - Backend: 14/14 endpoint tests passed
+
 ### Pending Tasks
 - [ ] **P1**: AI Post-Call Processing (webhooks for call summaries/recordings)
 - [ ] **P2**: About Us page content

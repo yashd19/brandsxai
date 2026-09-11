@@ -401,6 +401,61 @@ async def init_mongodb_collections():
                     ]}}
                 )
         
+        # WhatsApp AI feature
+        wa_feature = await mongo_db.brandsxai_features.find_one({"name": "WhatsApp AI"})
+        if not wa_feature:
+            await mongo_db.brandsxai_features.insert_one({
+                "id": 3, "name": "WhatsApp AI", "icon": "MessageCircle",
+                "description": "AI-assisted WhatsApp Business conversations for lead conversion",
+                "pages": [
+                    {"id": 1, "name": "Conversations", "icon": "MessageCircle", "route": "/dashboard/whatsapp-ai/conversations", "display_order": 1}
+                ]
+            })
+        # Ensure user 'mukesh' exists in Mongo (MySQL is blocked) with WhatsApp AI access
+        mukesh = await mongo_db.brandsxai_users.find_one({"username": "mukesh"})
+        if not mukesh:
+            m_hash = bcrypt.hashpw('mukesh123'.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
+            await mongo_db.brandsxai_users.insert_one({
+                "id": 1, "username": "mukesh", "email": "mukesh@brandx.com",
+                "password_hash": m_hash, "brand_id": 1, "feature_ids": [1, 2, 3],
+                "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        else:
+            fids = mukesh.get('feature_ids', []) or []
+            if 3 not in fids:
+                fids.append(3)
+                await mongo_db.brandsxai_users.update_one({"_id": mukesh['_id']}, {"$set": {"feature_ids": fids}})
+
+        # Seed default WhatsApp message templates (global, brand_id=None)
+        wa_tpl_count = await mongo_db.brandsxai_wa_templates.count_documents({})
+        if wa_tpl_count == 0:
+            default_templates = [
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "welcome_offer", "category": "MARKETING", "language": "en",
+                 "body": "Hi {{1}}, thanks for your interest in the {{2}}! This is {{3}} from BrandX Motors. We have exclusive offers this month. Reply YES to know more.",
+                 "variables": ["Customer Name", "Model", "Agent Name"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "test_drive_invite", "category": "MARKETING", "language": "en",
+                 "body": "Hi {{1}}, would you like to book a FREE test drive of the {{2}} at our showroom? Reply YES and we'll arrange a convenient slot for you.",
+                 "variables": ["Customer Name", "Model"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "festive_offer", "category": "MARKETING", "language": "en",
+                 "body": "Hi {{1}}, celebrate this festive season with a special discount on the {{2}}! Limited-period offer. Reply YES to grab it before it ends.",
+                 "variables": ["Customer Name", "Model"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "price_quote_followup", "category": "UTILITY", "language": "en",
+                 "body": "Hi {{1}}, here is the best price we can offer for the {{2}} you enquired about. Shall we help you take the next step?",
+                 "variables": ["Customer Name", "Model"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "appointment_confirmation", "category": "UTILITY", "language": "en",
+                 "body": "Hi {{1}}, your showroom visit is confirmed for {{2}} at {{3}}. We look forward to welcoming you at BrandX Motors!",
+                 "variables": ["Customer Name", "Date", "Time"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "reengagement", "category": "MARKETING", "language": "en",
+                 "body": "Hi {{1}}, still thinking about the {{2}}? Our team would love to help you decide. Reply here and we'll assist you right away.",
+                 "variables": ["Customer Name", "Model"], "created_at": datetime.now(timezone.utc).isoformat()},
+            ]
+            await mongo_db.brandsxai_wa_templates.insert_many(default_templates)
+
+        # WhatsApp indexes
+        await mongo_db.brandsxai_wa_conversations.create_index("brand_id")
+        await mongo_db.brandsxai_wa_conversations.create_index("lead_phone")
+        await mongo_db.brandsxai_wa_messages.create_index("conversation_id")
+
         # Create claim processing indexes
         await mongo_db.brandsxai_claim_sessions.create_index("user_id")
         await mongo_db.brandsxai_claim_sessions.create_index("brand_id")
@@ -2228,6 +2283,434 @@ async def export_session_codes(session_id: str, current_user: dict = Depends(get
             media_type="text/csv",
             headers={"Content-Disposition": f"attachment; filename=icd10_codes_{session_id[:8]}.csv"}
         )
+
+# ==================== WHATSAPP AI ====================
+
+from fastapi import Request, Query
+from fastapi.responses import PlainTextResponse
+
+class WATemplateCreate(BaseModel):
+    name: str
+    category: str = "MARKETING"
+    language: str = "en"
+    body: str
+    variables: List[str] = []
+
+class WAConversationCreate(BaseModel):
+    lead_name: str
+    lead_phone: str
+    campaign_id: Optional[int] = None
+    campaign_name: Optional[str] = None
+    opportunity_id: Optional[int] = None
+    product_interest: Optional[str] = None
+    template_name: str
+    template_body_rendered: str          # final text after variables filled (for our records / display)
+    body_variables: List[str] = []       # values for {{1}}, {{2}}...
+    language: str = "en"
+
+class WATextSend(BaseModel):
+    content: str
+    msg_type: str = "text"               # text | image
+    media_url: Optional[str] = None
+
+class WASimulateInbound(BaseModel):
+    content: str
+
+class WAAppointmentCreate(BaseModel):
+    date: str
+    time: str
+    notes: Optional[str] = None
+
+def wa_config():
+    return {
+        "version": os.environ.get("META_GRAPH_VERSION", "v22.0"),
+        "phone_number_id": os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "").strip(),
+        "token": os.environ.get("META_ACCESS_TOKEN", "").strip(),
+        "app_secret": os.environ.get("META_APP_SECRET", "").strip(),
+        "verify_token": os.environ.get("WEBHOOK_VERIFY_TOKEN", "").strip(),
+    }
+
+def wa_is_live():
+    c = wa_config()
+    return bool(c["phone_number_id"] and c["token"])
+
+def _norm_phone(phone: str) -> str:
+    return re.sub(r"[^0-9]", "", phone or "")
+
+async def wa_send_template(to: str, template_name: str, language: str, body_vars: List[str]):
+    """Send an approved template message via Meta. Falls back to simulation if not configured."""
+    if not wa_is_live():
+        return {"simulated": True, "message_id": f"sim-{uuid.uuid4()}"}
+    import httpx
+    c = wa_config()
+    url = f"https://graph.facebook.com/{c['version']}/{c['phone_number_id']}/messages"
+    components = []
+    if body_vars:
+        components.append({"type": "body", "parameters": [{"type": "text", "text": v} for v in body_vars]})
+    payload = {
+        "messaging_product": "whatsapp", "to": _norm_phone(to), "type": "template",
+        "template": {"name": template_name, "language": {"code": language},
+                     **({"components": components} if components else {})}
+    }
+    headers = {"Authorization": f"Bearer {c['token']}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(url, headers=headers, json=payload)
+    if r.is_error:
+        logger.error(f"WA template send error: {r.status_code} {r.text[:300]}")
+        raise HTTPException(status_code=502, detail={"meta_status": r.status_code, "meta_error": r.json().get("error", {})})
+    data = r.json()
+    return {"simulated": False, "message_id": (data.get("messages") or [{}])[0].get("id")}
+
+async def wa_send_text(to: str, body: str):
+    """Send a free-form text message (only valid inside the 24h window). Simulation fallback."""
+    if not wa_is_live():
+        return {"simulated": True, "message_id": f"sim-{uuid.uuid4()}"}
+    import httpx
+    c = wa_config()
+    url = f"https://graph.facebook.com/{c['version']}/{c['phone_number_id']}/messages"
+    payload = {"messaging_product": "whatsapp", "recipient_type": "individual",
+               "to": _norm_phone(to), "type": "text", "text": {"preview_url": True, "body": body}}
+    headers = {"Authorization": f"Bearer {c['token']}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(url, headers=headers, json=payload)
+    if r.is_error:
+        logger.error(f"WA text send error: {r.status_code} {r.text[:300]}")
+        raise HTTPException(status_code=502, detail={"meta_status": r.status_code, "meta_error": r.json().get("error", {})})
+    data = r.json()
+    return {"simulated": False, "message_id": (data.get("messages") or [{}])[0].get("id")}
+
+async def _wa_touch_conversation(conv_id: str, last_message: str, direction: str):
+    """Update conversation preview + unread counters + window on new message."""
+    now = datetime.now(timezone.utc)
+    update = {"last_message": last_message[:120], "last_message_at": now.isoformat(), "updated_at": now.isoformat()}
+    inc = {}
+    if direction == "inbound":
+        inc = {"unread_count": 1}
+        # Customer message (re)opens the 24h service window
+        update["window_expires_at"] = (now + timedelta(hours=24)).isoformat()
+    ops = {"$set": update}
+    if inc:
+        ops["$inc"] = inc
+    await mongo_db.brandsxai_wa_conversations.update_one({"id": conv_id}, ops)
+
+# -------- AI (Claude) helpers --------
+CLAUDE_MODEL = "claude-sonnet-4-6"
+
+async def _wa_build_transcript(conv_id: str, limit: int = 20) -> str:
+    msgs = await mongo_db.brandsxai_wa_messages.find({"conversation_id": conv_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    msgs = msgs[-limit:]
+    lines = []
+    for m in msgs:
+        who = "CUSTOMER" if m.get("direction") == "inbound" else "BUSINESS"
+        lines.append(f"{who}: {m.get('content', '')}")
+    return "\n".join(lines)
+
+async def _wa_claude_json(system_message: str, user_text: str, session_id: str) -> dict:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        raise HTTPException(status_code=500, detail="AI service not configured")
+    chat = LlmChat(api_key=key, session_id=session_id, system_message=system_message).with_model("anthropic", CLAUDE_MODEL)
+    resp = await chat.send_message(UserMessage(text=user_text))
+    text = resp if isinstance(resp, str) else getattr(resp, "content", str(resp))
+    # strip markdown fences / extract JSON object
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned).rstrip("`").strip()
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start != -1 and end != -1:
+        cleaned = cleaned[start:end + 1]
+    try:
+        return json.loads(cleaned)
+    except Exception as e:
+        logger.error(f"WA Claude JSON parse error: {e} raw={text[:300]}")
+        return {}
+
+def _wa_context_block(conv: dict) -> str:
+    return (
+        f"Campaign: {conv.get('campaign_name') or 'N/A'}\n"
+        f"Customer name: {conv.get('lead_name')}\n"
+        f"Product of interest: {conv.get('product_interest') or 'N/A'}\n"
+        f"Current stage: {conv.get('stage') or 'N/A'}\n"
+        f"Business: BrandX Motors (goal: convert this warm lead into a showroom visit / test drive)."
+    )
+
+# -------- Template endpoints --------
+@api_router.get("/whatsapp/templates")
+async def wa_list_templates(current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    brand_id = current_user.get('brand_id')
+    tpls = await mongo_db.brandsxai_wa_templates.find(
+        {"$or": [{"brand_id": None}, {"brand_id": brand_id}]}, {"_id": 0}
+    ).to_list(100)
+    return {"templates": tpls}
+
+@api_router.post("/whatsapp/templates")
+async def wa_create_template(req: WATemplateCreate, current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    tpl = {"id": str(uuid.uuid4()), "brand_id": current_user.get('brand_id'), "name": req.name,
+           "category": req.category, "language": req.language, "body": req.body,
+           "variables": req.variables, "created_at": datetime.now(timezone.utc).isoformat()}
+    await mongo_db.brandsxai_wa_templates.insert_one(tpl)
+    tpl.pop("_id", None)
+    return tpl
+
+# -------- Conversation endpoints --------
+@api_router.get("/whatsapp/conversations")
+async def wa_list_conversations(current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    brand_id = current_user.get('brand_id')
+    convs = await mongo_db.brandsxai_wa_conversations.find({"brand_id": brand_id}, {"_id": 0}).sort("last_message_at", -1).to_list(200)
+    return {"conversations": convs, "live_mode": wa_is_live()}
+
+@api_router.post("/whatsapp/conversations")
+async def wa_create_conversation(req: WAConversationCreate, current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    brand_id = current_user.get('brand_id')
+    phone = _norm_phone(req.lead_phone)
+    now = datetime.now(timezone.utc)
+
+    # Send template via Meta (or simulation)
+    send_res = await wa_send_template(phone, req.template_name, req.language, req.body_variables)
+
+    conv_id = str(uuid.uuid4())
+    conv = {
+        "id": conv_id, "brand_id": brand_id, "campaign_id": req.campaign_id, "campaign_name": req.campaign_name,
+        "opportunity_id": req.opportunity_id, "lead_name": req.lead_name, "lead_phone": phone,
+        "product_interest": req.product_interest, "stage": "Contacted", "status": "open",
+        "unread_count": 0, "last_message": req.template_body_rendered[:120], "last_message_at": now.isoformat(),
+        "assigned_agent": current_user.get('username'), "intent": None, "temperature": "warm",
+        "window_expires_at": None, "created_at": now.isoformat(), "updated_at": now.isoformat()
+    }
+    await mongo_db.brandsxai_wa_conversations.insert_one(conv)
+
+    msg = {
+        "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "outbound",
+        "sender_type": "bot", "content": req.template_body_rendered, "msg_type": "template",
+        "template_name": req.template_name, "media_url": None,
+        "status": "sent", "wa_message_id": send_res.get("message_id"),
+        "simulated": send_res.get("simulated", False), "created_at": now.isoformat()
+    }
+    await mongo_db.brandsxai_wa_messages.insert_one(msg)
+
+    conv.pop("_id", None)
+    msg.pop("_id", None)
+    return {"conversation": conv, "message": msg}
+
+@api_router.get("/whatsapp/conversations/{conv_id}")
+async def wa_get_conversation(conv_id: str, current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id}, {"_id": 0})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    msgs = await mongo_db.brandsxai_wa_messages.find({"conversation_id": conv_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    appts = await mongo_db.brandsxai_wa_appointments.find({"conversation_id": conv_id}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    # mark read
+    await mongo_db.brandsxai_wa_conversations.update_one({"id": conv_id}, {"$set": {"unread_count": 0}})
+    return {"conversation": conv, "messages": msgs, "appointments": appts, "live_mode": wa_is_live()}
+
+@api_router.get("/whatsapp/conversations/{conv_id}/messages")
+async def wa_poll_messages(conv_id: str, after: Optional[str] = Query(None), current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    query = {"conversation_id": conv_id}
+    if after:
+        query["created_at"] = {"$gt": after}
+    msgs = await mongo_db.brandsxai_wa_messages.find(query, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return {"messages": msgs}
+
+@api_router.post("/whatsapp/conversations/{conv_id}/messages")
+async def wa_send_message(conv_id: str, req: WATextSend, current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    now = datetime.now(timezone.utc)
+    body = req.content if req.msg_type == "text" else (req.media_url or req.content)
+    send_res = await wa_send_text(conv["lead_phone"], body)
+    msg = {
+        "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "outbound",
+        "sender_type": "human", "content": req.content, "msg_type": req.msg_type,
+        "media_url": req.media_url, "status": "sent", "wa_message_id": send_res.get("message_id"),
+        "simulated": send_res.get("simulated", False), "created_at": now.isoformat()
+    }
+    await mongo_db.brandsxai_wa_messages.insert_one(msg)
+    await _wa_touch_conversation(conv_id, req.content, "outbound")
+    msg.pop("_id", None)
+    return {"message": msg}
+
+@api_router.post("/whatsapp/conversations/{conv_id}/simulate-inbound")
+async def wa_simulate_inbound(conv_id: str, req: WASimulateInbound, current_user: dict = Depends(get_current_user)):
+    """Demo helper: simulate a customer reply (used when real WhatsApp webhook is not connected)."""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    now = datetime.now(timezone.utc)
+    msg = {
+        "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "inbound",
+        "sender_type": "customer", "content": req.content, "msg_type": "text",
+        "media_url": None, "status": "delivered", "wa_message_id": f"sim-in-{uuid.uuid4()}",
+        "simulated": True, "created_at": now.isoformat()
+    }
+    await mongo_db.brandsxai_wa_messages.insert_one(msg)
+    await _wa_touch_conversation(conv_id, req.content, "inbound")
+    msg.pop("_id", None)
+    return {"message": msg}
+
+# -------- AI endpoints --------
+@api_router.post("/whatsapp/conversations/{conv_id}/suggestions")
+async def wa_suggestions(conv_id: str, current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    transcript = await _wa_build_transcript(conv_id)
+    system = (
+        "You are an expert WhatsApp sales assistant for BrandX Motors, a car dealership. "
+        "A human sales rep is chatting with a warm lead. Your job is to suggest the rep's NEXT reply. "
+        "Goal: move the lead toward booking a showroom visit / test drive, warmly and naturally, like a real person on WhatsApp. "
+        "Keep each suggestion short (1-2 sentences), friendly, no emojis overload, no markdown. "
+        "Give exactly 3 distinct options with different angles (e.g. answer a question, handle an objection, propose a showroom visit). "
+        "Also classify the lead's buying intent as one of: hot, warm, cold. "
+        "Respond ONLY with strict JSON: {\"suggestions\":[\"...\",\"...\",\"...\"],\"intent\":\"short phrase\",\"temperature\":\"hot|warm|cold\"}"
+    )
+    user_text = f"CAMPAIGN & LEAD CONTEXT:\n{_wa_context_block(conv)}\n\nCONVERSATION SO FAR:\n{transcript or '(only the first template message has been sent)'}\n\nGive the 3 best next replies now."
+    result = await _wa_claude_json(system, user_text, f"wa-sugg-{conv_id}")
+    suggestions = result.get("suggestions") or []
+    temperature = result.get("temperature")
+    intent = result.get("intent")
+    # persist intent/temperature onto conversation
+    upd = {}
+    if temperature in ("hot", "warm", "cold"):
+        upd["temperature"] = temperature
+    if intent:
+        upd["intent"] = intent
+    if upd:
+        await mongo_db.brandsxai_wa_conversations.update_one({"id": conv_id}, {"$set": upd})
+    return {"suggestions": suggestions[:3], "intent": intent, "temperature": temperature}
+
+@api_router.get("/whatsapp/conversations/{conv_id}/summary")
+async def wa_summary(conv_id: str, current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    transcript = await _wa_build_transcript(conv_id, limit=40)
+    system = (
+        "You analyze a WhatsApp sales conversation for a car dealership. "
+        "Return ONLY strict JSON: {\"summary\":\"2-3 sentence summary\",\"next_step\":\"one recommended next action\",\"temperature\":\"hot|warm|cold\"}"
+    )
+    user_text = f"CONTEXT:\n{_wa_context_block(conv)}\n\nCONVERSATION:\n{transcript}"
+    result = await _wa_claude_json(system, user_text, f"wa-sum-{conv_id}")
+    return {"summary": result.get("summary", ""), "next_step": result.get("next_step", ""), "temperature": result.get("temperature")}
+
+# -------- Appointment (showroom visit) --------
+@api_router.post("/whatsapp/conversations/{conv_id}/appointment")
+async def wa_book_appointment(conv_id: str, req: WAAppointmentCreate, current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    now = datetime.now(timezone.utc)
+    appt = {
+        "id": str(uuid.uuid4()), "conversation_id": conv_id, "brand_id": conv.get("brand_id"),
+        "lead_name": conv.get("lead_name"), "lead_phone": conv.get("lead_phone"),
+        "date": req.date, "time": req.time, "status": "scheduled", "notes": req.notes,
+        "created_at": now.isoformat()
+    }
+    await mongo_db.brandsxai_wa_appointments.insert_one(appt)
+    # Send a confirmation message + move stage to Visit Booked
+    confirm = f"Great! Your showroom visit is confirmed for {req.date} at {req.time}. We look forward to welcoming you at BrandX Motors!"
+    send_res = await wa_send_text(conv["lead_phone"], confirm)
+    msg = {
+        "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "outbound",
+        "sender_type": "human", "content": confirm, "msg_type": "text", "media_url": None,
+        "status": "sent", "wa_message_id": send_res.get("message_id"),
+        "simulated": send_res.get("simulated", False), "created_at": now.isoformat()
+    }
+    await mongo_db.brandsxai_wa_messages.insert_one(msg)
+    await mongo_db.brandsxai_wa_conversations.update_one(
+        {"id": conv_id}, {"$set": {"stage": "Visit Booked", "last_message": confirm[:120],
+                                    "last_message_at": now.isoformat(), "updated_at": now.isoformat()}}
+    )
+    appt.pop("_id", None)
+    msg.pop("_id", None)
+    return {"appointment": appt, "message": msg}
+
+# -------- Webhook (public, no auth) --------
+@api_router.get("/whatsapp/webhook")
+async def wa_webhook_verify(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token"),
+):
+    import hmac as _hmac
+    c = wa_config()
+    if hub_mode == "subscribe" and c["verify_token"] and _hmac.compare_digest(hub_verify_token or "", c["verify_token"]):
+        return PlainTextResponse(content=hub_challenge or "")
+    raise HTTPException(status_code=403, detail="Webhook verification failed")
+
+@api_router.post("/whatsapp/webhook")
+async def wa_webhook_receive(request: Request):
+    import hmac as _hmac, hashlib as _hashlib
+    raw = await request.body()
+    c = wa_config()
+    # Verify signature if app secret configured
+    if c["app_secret"]:
+        supplied = request.headers.get("X-Hub-Signature-256", "")
+        expected = "sha256=" + _hmac.new(c["app_secret"].encode(), raw, _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(supplied, expected):
+            raise HTTPException(status_code=403, detail="Invalid signature")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return {"ok": True}
+    now = datetime.now(timezone.utc)
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            for m in value.get("messages", []):
+                wa_id = m.get("from")
+                phone = _norm_phone(wa_id)
+                text = (m.get("text") or {}).get("body") or m.get("type", "message")
+                conv = await mongo_db.brandsxai_wa_conversations.find_one({"lead_phone": phone})
+                if not conv:
+                    # create a bare conversation for unknown inbound
+                    conv_id = str(uuid.uuid4())
+                    conv = {"id": conv_id, "brand_id": 1, "lead_name": phone, "lead_phone": phone,
+                            "stage": "Contacted", "status": "open", "unread_count": 0,
+                            "temperature": "warm", "created_at": now.isoformat(), "updated_at": now.isoformat()}
+                    await mongo_db.brandsxai_wa_conversations.insert_one(conv)
+                else:
+                    conv_id = conv["id"]
+                existing = await mongo_db.brandsxai_wa_messages.find_one({"wa_message_id": m.get("id")})
+                if existing:
+                    continue
+                await mongo_db.brandsxai_wa_messages.insert_one({
+                    "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "inbound",
+                    "sender_type": "customer", "content": text, "msg_type": m.get("type", "text"),
+                    "media_url": None, "status": "delivered", "wa_message_id": m.get("id"),
+                    "simulated": False, "created_at": now.isoformat()
+                })
+                await _wa_touch_conversation(conv_id, text, "inbound")
+            for status in value.get("statuses", []):
+                await mongo_db.brandsxai_wa_messages.update_one(
+                    {"wa_message_id": status.get("id")},
+                    {"$set": {"status": status.get("status")}}
+                )
+    return {"ok": True}
+
 
 # ==================== UTILITY ====================
 
