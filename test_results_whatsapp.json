@@ -3,84 +3,96 @@
     "test": "AUTH: Login as brand user",
     "passed": true,
     "details": "Token received, user: None",
-    "timestamp": "2026-09-11T20:55:25.704755+00:00"
+    "timestamp": "2026-09-11T21:51:26.583418+00:00"
   },
   {
     "test": "GET /api/whatsapp/templates",
     "passed": true,
     "details": "Found 6 templates (expected >=6)",
-    "timestamp": "2026-09-11T20:55:25.922564+00:00"
+    "timestamp": "2026-09-11T21:51:26.828346+00:00"
   },
   {
     "test": "POST /api/whatsapp/conversations",
     "passed": true,
-    "details": "Conversation created: 629d7ce1-5082-42b9-9206-4ffaed8a9c46, simulated=true",
-    "timestamp": "2026-09-11T20:55:26.113762+00:00"
+    "details": "Conversation created: e2e4a3d4-9db7-48c7-ac08-22548e5990f5, simulated=true",
+    "timestamp": "2026-09-11T21:51:27.044029+00:00"
   },
   {
     "test": "GET /api/whatsapp/conversations",
     "passed": true,
-    "details": "Found conversation 629d7ce1-5082-42b9-9206-4ffaed8a9c46, live_mode=false",
-    "timestamp": "2026-09-11T20:55:26.377190+00:00"
+    "details": "Found conversation e2e4a3d4-9db7-48c7-ac08-22548e5990f5, live_mode=false",
+    "timestamp": "2026-09-11T21:51:27.231008+00:00"
   },
   {
-    "test": "GET /api/whatsapp/conversations/629d7ce1-5082-42b9-9206-4ffaed8a9c46",
+    "test": "GET /api/whatsapp/conversations/e2e4a3d4-9db7-48c7-ac08-22548e5990f5",
     "passed": true,
     "details": "Retrieved conversation with 1 message(s)",
-    "timestamp": "2026-09-11T20:55:26.563119+00:00"
+    "timestamp": "2026-09-11T21:51:27.425197+00:00"
   },
   {
     "test": "POST /api/whatsapp/conversations/{id}/messages",
     "passed": true,
     "details": "Human message sent, simulated=true",
-    "timestamp": "2026-09-11T20:55:26.728119+00:00"
+    "timestamp": "2026-09-11T21:51:27.609702+00:00"
   },
   {
     "test": "POST /api/whatsapp/conversations/{id}/simulate-inbound",
     "passed": true,
     "details": "Inbound customer message simulated",
-    "timestamp": "2026-09-11T20:55:26.884179+00:00"
+    "timestamp": "2026-09-11T21:51:27.770832+00:00"
   },
   {
     "test": "GET /api/whatsapp/conversations/{id}/messages?after=",
     "passed": true,
     "details": "Retrieved 3 newer messages",
-    "timestamp": "2026-09-11T20:55:27.072894+00:00"
+    "timestamp": "2026-09-11T21:51:27.897889+00:00"
   },
   {
     "test": "POST /api/whatsapp/conversations/{id}/suggestions",
     "passed": true,
-    "details": "Got 3 suggestions, temperature=warm, intent=actively evaluating, needs details before deciding",
-    "timestamp": "2026-09-11T20:55:35.374209+00:00"
+    "details": "Got 3 suggestions, 3 creative_ideas, temperature=warm, intent=exploring features and pricing, showing genuine in...",
+    "timestamp": "2026-09-11T21:51:36.597244+00:00"
+  },
+  {
+    "test": "POST /api/whatsapp/conversations/{id}/draft-from-idea",
+    "passed": true,
+    "details": "Drafted message: Hey Rahul, the X7 comes packed with some amazing features and we have a special Diwali price that I ...",
+    "timestamp": "2026-09-11T21:51:38.865341+00:00"
   },
   {
     "test": "GET /api/whatsapp/conversations/{id}/summary",
     "passed": true,
-    "details": "Summary: Rahul Sharma has responded positively to the initial Diwali offer outreach and i... Next step: Reply immediately with specific Diwali offer pricing, key fe...",
-    "timestamp": "2026-09-11T20:55:40.098125+00:00"
+    "details": "Summary: Rahul Sharma has responded positively to the Diwali campaign and is actively ask... Next step: Reply promptly with the SUV X7's key features, Diwali offer ...",
+    "timestamp": "2026-09-11T21:51:42.936586+00:00"
   },
   {
     "test": "POST /api/whatsapp/conversations/{id}/appointment",
     "passed": true,
     "details": "Appointment booked, stage changed to 'Visit Booked'",
-    "timestamp": "2026-09-11T20:55:40.566249+00:00"
+    "timestamp": "2026-09-11T21:51:43.276886+00:00"
   },
   {
     "test": "GET /api/whatsapp/webhook (correct token)",
     "passed": true,
     "details": "Returned challenge: 12345",
-    "timestamp": "2026-09-11T20:55:40.761434+00:00"
+    "timestamp": "2026-09-11T21:51:43.469495+00:00"
   },
   {
     "test": "GET /api/whatsapp/webhook (wrong token)",
     "passed": true,
     "details": "Correctly rejected with 403",
-    "timestamp": "2026-09-11T20:55:41.000120+00:00"
+    "timestamp": "2026-09-11T21:51:43.596236+00:00"
   },
   {
     "test": "Auth guard (no token)",
     "passed": true,
     "details": "Correctly rejected with 403",
-    "timestamp": "2026-09-11T20:55:41.199664+00:00"
+    "timestamp": "2026-09-11T21:51:43.763055+00:00"
+  },
+  {
+    "test": "AUTH: Login as testuser/test123",
+    "passed": true,
+    "details": "Token received, WhatsApp AI feature present (feature id 3)",
+    "timestamp": "2026-09-11T21:51:44.132838+00:00"
   }
 ]

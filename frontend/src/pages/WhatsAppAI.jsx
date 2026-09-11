@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageCircle, Send, Sparkles, Search, Plus, Calendar, X, Image as ImageIcon,
-  Bot, User, CheckCheck, Phone, TrendingUp, FileText, ChevronRight
+  Bot, User, CheckCheck, Phone, TrendingUp, FileText, ChevronRight, Lightbulb
 } from 'lucide-react';
 import './WhatsAppAI.css';
 
@@ -44,6 +44,8 @@ const WhatsAppAI = () => {
 
   // AI suggestions
   const [suggestions, setSuggestions] = useState([]);
+  const [creativeIdeas, setCreativeIdeas] = useState([]);
+  const [ideaBusy, setIdeaBusy] = useState(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestShown, setSuggestShown] = useState(false);
   const suggestedForRef = useRef(null); // last inbound msg id we auto-suggested for
@@ -124,7 +126,7 @@ const WhatsAppAI = () => {
 
   const openConversation = async (c) => {
     setActiveId(c.id);
-    setSuggestions([]); setSuggestShown(false); suggestedForRef.current = null;
+    setSuggestions([]); setCreativeIdeas([]); setSuggestShown(false); suggestedForRef.current = null;
     setSummary(null);
     await loadConversation(c.id);
     // reflect read locally
@@ -152,12 +154,28 @@ const WhatsAppAI = () => {
       if (res.ok) {
         const data = await res.json();
         setSuggestions(data.suggestions || []);
+        setCreativeIdeas(data.creative_ideas || []);
         setSuggestShown(true);
         if (data.temperature) {
           setActiveConv(prev => prev ? { ...prev, temperature: data.temperature, intent: data.intent } : prev);
         }
       }
     } catch (e) { /* ignore */ } finally { setSuggestLoading(false); }
+  };
+
+  const draftFromIdea = async (idea, idx) => {
+    if (!activeId) return;
+    setIdeaBusy(idx);
+    try {
+      const res = await fetch(`${API_URL}/api/whatsapp/conversations/${activeId}/draft-from-idea`, {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idea })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.message) setInput(data.message);
+      }
+    } catch (e) { /* ignore */ } finally { setIdeaBusy(null); }
   };
 
   const sendMessage = async (text) => {
@@ -171,7 +189,7 @@ const WhatsAppAI = () => {
     };
     setMessages(prev => [...prev, optimistic]);
     setInput('');
-    setSuggestions([]); setSuggestShown(false);
+    setSuggestions([]); setCreativeIdeas([]); setSuggestShown(false);
     try {
       const res = await fetch(`${API_URL}/api/whatsapp/conversations/${activeId}/messages`, {
         method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -330,21 +348,46 @@ const WhatsAppAI = () => {
               <div ref={msgEndRef} />
             </div>
 
-            {/* AI suggestions bar — appears contextually, dismissible, never crowds */}
-            {(suggestShown && (suggestions.length > 0 || suggestLoading)) && (
+            {/* AI panel — two blocks: Creative ideas (routes) + Suggested replies (messages). Dismissible, non-intrusive */}
+            {(suggestShown && (suggestions.length > 0 || creativeIdeas.length > 0 || suggestLoading)) && (
               <div className="wa-suggest">
                 <div className="wa-suggest-head">
-                  <span><Sparkles size={13} /> Suggested replies</span>
+                  <span><Sparkles size={13} /> AI Assist</span>
                   <button onClick={() => { setSuggestShown(false); }} title="Hide"><X size={14} /></button>
                 </div>
-                <div className="wa-suggest-chips">
-                  {suggestLoading && <span className="wa-chip loading">Thinking…</span>}
-                  {!suggestLoading && suggestions.map((s, i) => (
-                    <button key={i} className="wa-chip" onClick={() => setInput(s)} title="Click to use (you can edit before sending)">
-                      {s}
-                    </button>
-                  ))}
-                </div>
+
+                {suggestLoading && <div className="wa-suggest-chips"><span className="wa-chip loading">Thinking…</span></div>}
+
+                {!suggestLoading && creativeIdeas.length > 0 && (
+                  <div className="wa-suggest-section">
+                    <div className="wa-section-label idea"><Lightbulb size={12} /> Creative ideas · next-step routes</div>
+                    <div className="wa-suggest-chips">
+                      {creativeIdeas.map((idea, i) => (
+                        <button
+                          key={i}
+                          className={`wa-chip idea ${ideaBusy === i ? 'loading' : ''}`}
+                          onClick={() => draftFromIdea(idea, i)}
+                          title="Click to draft a message for this idea"
+                        >
+                          <Lightbulb size={12} /> {ideaBusy === i ? 'Drafting…' : idea}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!suggestLoading && suggestions.length > 0 && (
+                  <div className="wa-suggest-section">
+                    <div className="wa-section-label"><MessageCircle size={12} /> Suggested replies · ready to send</div>
+                    <div className="wa-suggest-chips">
+                      {suggestions.map((s, i) => (
+                        <button key={i} className="wa-chip" onClick={() => setInput(s)} title="Click to use (you can edit before sending)">
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

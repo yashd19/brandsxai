@@ -2589,17 +2589,24 @@ async def wa_suggestions(conv_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Conversation not found")
     transcript = await _wa_build_transcript(conv_id)
     system = (
-        "You are an expert WhatsApp sales assistant for BrandX Motors, a car dealership. "
-        "A human sales rep is chatting with a warm lead. Your job is to suggest the rep's NEXT reply. "
-        "Goal: move the lead toward booking a showroom visit / test drive, warmly and naturally, like a real person on WhatsApp. "
-        "Keep each suggestion short (1-2 sentences), friendly, no emojis overload, no markdown. "
-        "Give exactly 3 distinct options with different angles (e.g. answer a question, handle an objection, propose a showroom visit). "
-        "Also classify the lead's buying intent as one of: hot, warm, cold. "
-        "Respond ONLY with strict JSON: {\"suggestions\":[\"...\",\"...\",\"...\"],\"intent\":\"short phrase\",\"temperature\":\"hot|warm|cold\"}"
+        "You are an expert WhatsApp sales strategist for BrandX Motors, a car dealership. "
+        "A human sales rep is chatting with a warm lead. You return TWO things:\n"
+        "1) creative_ideas: 2-3 short STRATEGIC next-step ideas / creative routes (NOT messages) that could open more "
+        "opportunities and move the lead toward a showroom visit or purchase. Think like a sales coach: e.g. offer a "
+        "limited-time festive discount, invite to a weekend test-drive event, share a short video walkthrough, offer free "
+        "home pickup/drop for a test drive, propose an exchange valuation, loop in a finance/EMI option. Each idea must be "
+        "a crisp phrase (max ~10 words), action-oriented, tailored to this conversation.\n"
+        "2) suggestions: exactly 3 ready-to-send REPLY messages the rep can send right now, short (1-2 sentences), warm, "
+        "natural like a real person on WhatsApp, no markdown, minimal emojis, each with a different angle "
+        "(answer a question, handle an objection, propose a showroom visit).\n"
+        "Also classify the lead's buying intent as one of: hot, warm, cold.\n"
+        "Respond ONLY with strict JSON: {\"creative_ideas\":[\"...\",\"...\"],\"suggestions\":[\"...\",\"...\",\"...\"],"
+        "\"intent\":\"short phrase\",\"temperature\":\"hot|warm|cold\"}"
     )
-    user_text = f"CAMPAIGN & LEAD CONTEXT:\n{_wa_context_block(conv)}\n\nCONVERSATION SO FAR:\n{transcript or '(only the first template message has been sent)'}\n\nGive the 3 best next replies now."
+    user_text = f"CAMPAIGN & LEAD CONTEXT:\n{_wa_context_block(conv)}\n\nCONVERSATION SO FAR:\n{transcript or '(only the first template message has been sent)'}\n\nGive the creative ideas and the 3 best next reply messages now."
     result = await _wa_claude_json(system, user_text, f"wa-sugg-{conv_id}")
     suggestions = result.get("suggestions") or []
+    creative_ideas = result.get("creative_ideas") or []
     temperature = result.get("temperature")
     intent = result.get("intent")
     # persist intent/temperature onto conversation
@@ -2610,7 +2617,33 @@ async def wa_suggestions(conv_id: str, current_user: dict = Depends(get_current_
         upd["intent"] = intent
     if upd:
         await mongo_db.brandsxai_wa_conversations.update_one({"id": conv_id}, {"$set": upd})
-    return {"suggestions": suggestions[:3], "intent": intent, "temperature": temperature}
+    return {"suggestions": suggestions[:3], "creative_ideas": creative_ideas[:3], "intent": intent, "temperature": temperature}
+
+class WADraftFromIdea(BaseModel):
+    idea: str
+
+@api_router.post("/whatsapp/conversations/{conv_id}/draft-from-idea")
+async def wa_draft_from_idea(conv_id: str, req: WADraftFromIdea, current_user: dict = Depends(get_current_user)):
+    """Turn a creative strategic idea into one ready-to-send WhatsApp message."""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    transcript = await _wa_build_transcript(conv_id)
+    system = (
+        "You are a WhatsApp sales rep for BrandX Motors. Turn the given STRATEGIC IDEA into ONE ready-to-send WhatsApp "
+        "message to the customer: short (1-2 sentences), warm, natural, no markdown, minimal emojis, ending with a gentle "
+        "nudge toward a showroom visit / test drive when it fits. "
+        "Respond ONLY with strict JSON: {\"message\":\"...\"}"
+    )
+    user_text = (
+        f"CAMPAIGN & LEAD CONTEXT:\n{_wa_context_block(conv)}\n\n"
+        f"CONVERSATION SO FAR:\n{transcript or '(only the first template message has been sent)'}\n\n"
+        f"STRATEGIC IDEA TO EXECUTE: {req.idea}\n\nWrite the message now."
+    )
+    result = await _wa_claude_json(system, user_text, f"wa-idea-{conv_id}")
+    return {"message": result.get("message", "")}
 
 @api_router.get("/whatsapp/conversations/{conv_id}/summary")
 async def wa_summary(conv_id: str, current_user: dict = Depends(get_current_user)):

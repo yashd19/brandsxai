@@ -249,3 +249,24 @@ agent_communication:
       message: "✅ ALL TESTS PASSED (14/14): Completed comprehensive testing of WhatsApp AI backend. All endpoints working correctly in SIMULATION mode. Key results: (1) Templates: 6 templates seeded and retrievable. (2) Conversations: Create/list/get working, simulated=true for all sends. (3) Messages: Human text send, inbound simulation, and polling with ?after parameter all working. (4) Claude AI: Suggestions endpoint returns 3 suggestions + temperature + intent. Summary endpoint returns summary + next_step. Claude integration (claude-sonnet-4-6) working via emergentintegrations. (5) Appointments: Booking creates appointment and updates stage to 'Visit Booked'. (6) Webhook: Verification working (correct token returns challenge, wrong token returns 403). (7) Auth: JWT authentication working, auth guard correctly rejects unauthorized requests. No issues found. Ready for frontend integration testing (requires user permission)."
     - agent: "testing"
       message: "✅ BUG FIX VERIFICATION COMPLETE (7/7 tests passed): Verified the reported bug fix - users can now easily access the login screen from the landing page. The 'Sign In' button (data-testid='home-signin-button') is prominently displayed at top-right on both desktop (1920x800, position x=1785) and mobile (390x844, position x=279) viewports. Button successfully navigates to /login page. Complete login flow tested: mukesh/mukesh123 → dashboard → WhatsApp AI feature accessible from sidebar. WhatsApp AI page displays correctly with 'Chats' heading and 'Rahul Sharma' conversation visible. No console errors detected. Bug fix is working as intended."
+
+  - task: "WhatsApp AI - suggestions now include creative_ideas + draft-from-idea"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "POST /conversations/{id}/suggestions now returns creative_ideas (2-3 strategic route ideas) in addition to suggestions (3 ready messages) + intent + temperature. New endpoint POST /conversations/{id}/draft-from-idea {idea} returns {message} - drafts a ready WhatsApp message for a chosen creative idea. Both use Claude claude-sonnet-4-6."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED (16/16 tests passed): Both AI endpoints working correctly. (1) POST /api/whatsapp/conversations/{id}/suggestions returns BOTH creative_ideas (3 strategic ideas) AND suggestions (3 ready messages) plus intent and temperature. Example creative_ideas: 'Send a 60-sec video walkthrough of X7 interior and features', 'Offer free doorstep test drive this Diwali weekend for Rahul', 'Share a limited-time Diwali EMI breakdown to show affordability'. (2) POST /api/whatsapp/conversations/{id}/draft-from-idea successfully drafts message from idea. Example: idea='invite to weekend test-drive event' → message='Hey Rahul, the X7 comes packed with some amazing features and we have a special Diwali price that I...'. (3) testuser/test123 login verified - returns valid JWT token with WhatsApp AI feature (id=3). Claude integration (claude-sonnet-4-6) working correctly for both endpoints."
+
+agent_communication:
+    - agent: "main"
+      message: "Re-test two AI endpoints (login mukesh/mukesh123 or testuser/test123). 1) POST /api/whatsapp/conversations/{id}/suggestions must now return BOTH 'creative_ideas' (2-3 short strategic idea strings) AND 'suggestions' (3 ready messages) plus intent+temperature. 2) POST /api/whatsapp/conversations/{id}/draft-from-idea with body {\"idea\":\"invite to weekend test-drive event\"} must return {\"message\": non-empty string}. Use an existing conversation id (create one via POST /conversations if needed). Also confirm new user testuser/test123 can log in via /api/auth/login."
+    - agent: "testing"
+      message: "✅ NEW AI ENDPOINTS TESTED (16/16 tests passed): Successfully tested the two updated AI endpoints. (1) POST /api/whatsapp/conversations/{id}/suggestions now correctly returns BOTH 'creative_ideas' (3 strategic ideas) AND 'suggestions' (3 ready messages) plus intent and temperature. Creative ideas example: ['Send a 60-sec video walkthrough of X7 interior and features', 'Offer free doorstep test drive this Diwali weekend for Rahul', 'Share a limited-time Diwali EMI breakdown to show affordability']. (2) POST /api/whatsapp/conversations/{id}/draft-from-idea successfully drafts messages from ideas. Test with idea='invite to weekend test-drive event' returned: 'Hey Rahul, the X7 comes packed with some amazing features and we have a special Diwali price that I...'. (3) testuser/test123 login verified - returns valid JWT token with WhatsApp AI feature (feature id 3). All endpoints working correctly with Claude claude-sonnet-4-6 integration."

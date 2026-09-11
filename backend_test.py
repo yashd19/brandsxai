@@ -310,7 +310,7 @@ def test_poll_messages():
         return False
 
 def test_ai_suggestions():
-    """Test 9: POST /api/whatsapp/conversations/{id}/suggestions - get AI suggestions"""
+    """Test 9: POST /api/whatsapp/conversations/{id}/suggestions - get AI suggestions with creative_ideas"""
     try:
         headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
         response = requests.post(
@@ -322,11 +322,14 @@ def test_ai_suggestions():
         if response.status_code == 200:
             data = response.json()
             suggestions = data.get("suggestions", [])
+            creative_ideas = data.get("creative_ideas", [])
             temperature = data.get("temperature")
             intent = data.get("intent")
             
             checks = []
             checks.append(("suggestions count", len(suggestions) >= 2))  # Expect about 3
+            checks.append(("creative_ideas exists", creative_ideas is not None))
+            checks.append(("creative_ideas count", len(creative_ideas) >= 2))  # Expect 2-3
             checks.append(("temperature", temperature in ["hot", "warm", "cold"]))
             checks.append(("intent exists", bool(intent)))
             
@@ -334,11 +337,13 @@ def test_ai_suggestions():
             
             if not failed_checks:
                 log_test("POST /api/whatsapp/conversations/{id}/suggestions", True, 
-                        f"Got {len(suggestions)} suggestions, temperature={temperature}, intent={intent}")
+                        f"Got {len(suggestions)} suggestions, {len(creative_ideas)} creative_ideas, temperature={temperature}, intent={intent[:50]}...")
+                print(f"   Creative Ideas: {creative_ideas}")
+                print(f"   Suggestions: {[s[:60]+'...' if len(s)>60 else s for s in suggestions]}")
                 return True
             else:
                 log_test("POST /api/whatsapp/conversations/{id}/suggestions", False, 
-                        f"Failed checks: {', '.join(failed_checks)}. Data: {json.dumps(data)[:200]}")
+                        f"Failed checks: {', '.join(failed_checks)}. Data: {json.dumps(data)[:300]}")
                 return False
         else:
             log_test("POST /api/whatsapp/conversations/{id}/suggestions", False, f"Status {response.status_code}: {response.text[:300]}")
@@ -347,8 +352,42 @@ def test_ai_suggestions():
         log_test("POST /api/whatsapp/conversations/{id}/suggestions", False, f"Exception: {str(e)}")
         return False
 
+def test_draft_from_idea():
+    """Test 10: POST /api/whatsapp/conversations/{id}/draft-from-idea - draft message from creative idea"""
+    try:
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+        payload = {
+            "idea": "invite to weekend test-drive event"
+        }
+        
+        response = requests.post(
+            f"{BASE_URL}/whatsapp/conversations/{conversation_id}/draft-from-idea",
+            json=payload,
+            headers=headers,
+            timeout=30  # Claude may take a few seconds
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            message = data.get("message")
+            
+            if message and len(message) > 10:  # Should be a non-empty message
+                log_test("POST /api/whatsapp/conversations/{id}/draft-from-idea", True, 
+                        f"Drafted message: {message[:100]}{'...' if len(message)>100 else ''}")
+                return True
+            else:
+                log_test("POST /api/whatsapp/conversations/{id}/draft-from-idea", False, 
+                        f"Message is empty or too short. Data: {json.dumps(data)}")
+                return False
+        else:
+            log_test("POST /api/whatsapp/conversations/{id}/draft-from-idea", False, f"Status {response.status_code}: {response.text[:300]}")
+            return False
+    except Exception as e:
+        log_test("POST /api/whatsapp/conversations/{id}/draft-from-idea", False, f"Exception: {str(e)}")
+        return False
+
 def test_ai_summary():
-    """Test 10: GET /api/whatsapp/conversations/{id}/summary - get AI summary"""
+    """Test 11: GET /api/whatsapp/conversations/{id}/summary - get AI summary"""
     try:
         headers = {"Authorization": f"Bearer {access_token}"}
         response = requests.get(
@@ -378,7 +417,7 @@ def test_ai_summary():
         return False
 
 def test_book_appointment():
-    """Test 11: POST /api/whatsapp/conversations/{id}/appointment - book showroom visit"""
+    """Test 12: POST /api/whatsapp/conversations/{id}/appointment - book showroom visit"""
     try:
         headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
         payload = {
@@ -449,7 +488,7 @@ def test_book_appointment():
         return False
 
 def test_webhook_verify_success():
-    """Test 12a: GET /api/whatsapp/webhook - verify with correct token"""
+    """Test 13a: GET /api/whatsapp/webhook - verify with correct token"""
     try:
         # No auth header for webhook
         params = {
@@ -472,7 +511,7 @@ def test_webhook_verify_success():
         return False
 
 def test_webhook_verify_fail():
-    """Test 12b: GET /api/whatsapp/webhook - verify with wrong token"""
+    """Test 13b: GET /api/whatsapp/webhook - verify with wrong token"""
     try:
         # No auth header for webhook
         params = {
@@ -495,7 +534,7 @@ def test_webhook_verify_fail():
         return False
 
 def test_auth_guard():
-    """Test 13: Auth guard - calling endpoint without token should return 403"""
+    """Test 14: Auth guard - calling endpoint without token should return 403"""
     try:
         # No auth header
         response = requests.get(f"{BASE_URL}/whatsapp/conversations", timeout=10)
@@ -508,6 +547,41 @@ def test_auth_guard():
             return False
     except Exception as e:
         log_test("Auth guard (no token)", False, f"Exception: {str(e)}")
+        return False
+
+def test_auth_login_testuser():
+    """Test 15: Authenticate as testuser/test123"""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/auth/login",
+            json={"username": "testuser", "password": "test123"},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            token = data.get("access_token")
+            features = data.get("features", [])
+            
+            # Check if WhatsApp AI feature (id=3) is present
+            has_whatsapp_ai = any(f.get("id") == 3 for f in features)
+            
+            if token and has_whatsapp_ai:
+                log_test("AUTH: Login as testuser/test123", True, 
+                        f"Token received, WhatsApp AI feature present (feature id 3)")
+                return True
+            elif not token:
+                log_test("AUTH: Login as testuser/test123", False, "No access_token in response")
+                return False
+            else:
+                log_test("AUTH: Login as testuser/test123", False, 
+                        f"WhatsApp AI feature (id=3) not found in features: {[f.get('id') for f in features]}")
+                return False
+        else:
+            log_test("AUTH: Login as testuser/test123", False, f"Status {response.status_code}: {response.text[:200]}")
+            return False
+    except Exception as e:
+        log_test("AUTH: Login as testuser/test123", False, f"Exception: {str(e)}")
         return False
 
 def print_summary():
@@ -561,6 +635,7 @@ def main():
         test_simulate_inbound()
         test_poll_messages()
         test_ai_suggestions()
+        test_draft_from_idea()
         test_ai_summary()
         test_book_appointment()
     else:
@@ -569,6 +644,7 @@ def main():
     test_webhook_verify_success()
     test_webhook_verify_fail()
     test_auth_guard()
+    test_auth_login_testuser()
     
     print_summary()
     
