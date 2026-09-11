@@ -427,7 +427,7 @@ const WhatsAppAI = () => {
             {(suggestShown && (suggestions.length > 0 || creativeIdeas.length > 0 || suggestLoading)) && (
               <div className="wa-suggest">
                 <div className="wa-suggest-head">
-                  <span><Sparkles size={13} /> AI Assist</span>
+                  <span><Sparkles size={13} /> Sales AI</span>
                   <button onClick={() => { setSuggestShown(false); }} title="Hide"><X size={14} /></button>
                 </div>
 

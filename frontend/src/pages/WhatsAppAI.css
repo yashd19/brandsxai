@@ -1,7 +1,11 @@
 /* ===================== WhatsApp AI ===================== */
+/* Scope full-height layout to the WhatsApp page only (adapts to real header height, desktop + mobile) */
+.dashboard:has(.wa-root) { height: 100vh; }
+.dashboard-main:has(.wa-root) { height: 100vh; min-height: 0; }
 .dashboard-content:has(.wa-root) {
+  flex: 1;
+  min-height: 0;
   padding: 0;
-  height: calc(100vh - 66px);
   overflow: hidden;
 }
 .wa-root {
@@ -18,6 +22,7 @@
 .wa-list {
   width: 340px;
   min-width: 300px;
+  min-height: 0;
   background: #fff;
   border-right: 1px solid #e2e2e2;
   display: flex;
@@ -50,7 +55,7 @@
 }
 .wa-search input { border: none; background: transparent; outline: none; width: 100%; font-size: 14px; color: #111b21; }
 
-.wa-threads { flex: 1; overflow-y: auto; }
+.wa-threads { flex: 1; min-height: 0; overflow-y: auto; }
 .wa-empty-list { text-align: center; padding: 40px 20px; color: #667781; }
 .wa-empty-list button {
   margin-top: 10px; border: none; background: #25D366; color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600;
@@ -82,7 +87,7 @@
 
 /* ---------- Middle chat ---------- */
 .wa-chat {
-  flex: 1; display: flex; flex-direction: column; min-width: 0;
+  flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
   background-color: #efeae2;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='none' stroke='%23d5cabb' stroke-width='2' opacity='0.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 30 h40 a8 8 0 0 1 8 8 v18 a8 8 0 0 1 -8 8 h-24 l-10 10 v-10 h-6 a8 8 0 0 1 -8 -8 v-18 a8 8 0 0 1 8 -8 z'/%3E%3Cpath d='M180 40 c-6 -10 -22 -6 -22 6 c0 10 22 22 22 22 c0 0 22 -12 22 -22 c0 -12 -16 -16 -22 -6 z'/%3E%3Cpath d='M120 150 l6 14 l15 1 l-11 10 l4 15 l-14 -8 l-14 8 l4 -15 l-11 -10 l15 -1 z'/%3E%3Cpath d='M40 180 l10 -4 l8 12 c6 10 14 18 24 24 l12 8 l-4 10 c-2 6 -8 8 -14 6 c-30 -10 -50 -30 -60 -60 c-2 -6 0 -12 6 -14 z'/%3E%3Ccircle cx='210' cy='150' r='18'/%3E%3Cpath d='M202 156 q8 8 16 0'/%3E%3Cpath d='M70 210 h30 l4 -6 h10 l4 6 h6 a6 6 0 0 1 6 6 v22 a6 6 0 0 1 -6 6 h-64 a6 6 0 0 1 -6 -6 v-22 a6 6 0 0 1 6 -6 z'/%3E%3Ccircle cx='96' cy='227' r='9'/%3E%3C/g%3E%3C/svg%3E");
   background-repeat: repeat;
@@ -111,7 +116,7 @@
 .wa-action.ghost:hover { background: #f5f6f6; }
 .wa-action.icon { padding: 7px; }
 
-.wa-messages { flex: 1; overflow-y: auto; padding: 18px 8% 8px; display: flex; flex-direction: column; }
+.wa-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 8% 8px; display: flex; flex-direction: column; }
 .wa-day { text-align: center; margin: 12px 0; }
 .wa-day span { background: #fff; color: #54656f; font-size: 12px; padding: 5px 12px; border-radius: 8px; box-shadow: 0 1px 1px rgba(0,0,0,.06); }
 .wa-msg { display: flex; margin-bottom: 6px; }
@@ -182,7 +187,7 @@
 
 /* ---------- right context ---------- */
 .wa-context {
-  width: 300px; min-width: 280px; background: #fff; border-left: 1px solid #e2e2e2; padding: 24px 18px;
+  width: 300px; min-width: 280px; min-height: 0; background: #fff; border-left: 1px solid #e2e2e2; padding: 24px 18px;
   overflow-y: auto; text-align: center;
 }
 .wa-ctx-avatar { width: 84px; height: 84px; border-radius: 50%; margin: 0 auto 12px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 28px; }
