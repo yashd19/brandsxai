@@ -41,6 +41,11 @@ const WhatsAppAI = () => {
   const [search, setSearch] = useState('');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
+  const fileInputRef = useRef(null);
+  const [simMedia, setSimMedia] = useState(null); // {url, kind} for demo inbound
+  const [simUploading, setSimUploading] = useState(false);
 
   // AI suggestions
   const [suggestions, setSuggestions] = useState([]);
@@ -205,17 +210,17 @@ const WhatsAppAI = () => {
   };
 
   const simulateInbound = async () => {
-    if (!simText.trim() || !activeId) return;
+    if ((!simText.trim() && !simMedia) || !activeId) return;
     try {
       const res = await fetch(`${API_URL}/api/whatsapp/conversations/${activeId}/simulate-inbound`, {
         method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: simText.trim() })
+        body: JSON.stringify({ content: simText.trim(), msg_type: simMedia ? simMedia.kind : 'text', media_url: simMedia ? simMedia.url : null })
       });
       if (res.ok) {
         const data = await res.json();
         setMessages(prev => [...prev, data.message]);
         lastTsRef.current = data.message.created_at;
-        setSimText(''); setShowSim(false);
+        setSimText(''); setSimMedia(null); setShowSim(false);
         loadConversations();
       }
     } catch (e) { /* ignore */ }
@@ -228,6 +233,68 @@ const WhatsAppAI = () => {
       const res = await fetch(`${API_URL}/api/whatsapp/conversations/${activeId}/summary`, { headers: authHeaders() });
       if (res.ok) setSummary(await res.json());
     } catch (e) { /* ignore */ } finally { setSummaryLoading(false); }
+  };
+
+  const mediaSrc = (u) => !u ? '' : (u.startsWith('http') ? u : `${API_URL}${u}`);
+
+  const CHUNK_SIZE = 256 * 1024;
+  const chunkedUpload = async (file) => {
+    const initRes = await fetch(`${API_URL}/api/whatsapp/upload/init`, {
+      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, content_type: file.type })
+    });
+    if (!initRes.ok) throw new Error('init failed');
+    const { upload_id } = await initRes.json();
+    let index = 0;
+    for (let start = 0; start < file.size; start += CHUNK_SIZE) {
+      const blob = file.slice(start, start + CHUNK_SIZE);
+      await fetch(`${API_URL}/api/whatsapp/upload/chunk?upload_id=${upload_id}&index=${index}`, {
+        method: 'POST', headers: { ...authHeaders() }, body: blob
+      });
+      index++;
+      setUploadPct(Math.min(98, Math.round(((start + CHUNK_SIZE) / file.size) * 100)));
+    }
+    const compRes = await fetch(`${API_URL}/api/whatsapp/upload/complete`, {
+      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ upload_id, filename: file.name, content_type: file.type })
+    });
+    if (!compRes.ok) throw new Error('complete failed');
+    return await compRes.json(); // {media_id, url, kind, content_type, filename}
+  };
+
+  const onPickFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (e.target) e.target.value = '';
+    if (!file || !activeId) return;
+    setUploading(true); setUploadPct(1);
+    try {
+      const media = await chunkedUpload(file);
+      const kind = media.kind === 'video' ? 'video' : (media.kind === 'image' ? 'image' : 'document');
+      const caption = input.trim();
+      const res = await fetch(`${API_URL}/api/whatsapp/conversations/${activeId}/messages`, {
+        method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: caption, msg_type: kind, media_url: media.url })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(prev => [...prev, data.message]);
+        lastTsRef.current = data.message.created_at;
+        setInput('');
+        loadConversations();
+      }
+    } catch (err) { /* ignore */ } finally { setUploading(false); setUploadPct(0); }
+  };
+
+  const onPickSimFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (e.target) e.target.value = '';
+    if (!file) return;
+    setSimUploading(true);
+    try {
+      const media = await chunkedUpload(file);
+      const kind = media.kind === 'video' ? 'video' : (media.kind === 'image' ? 'image' : 'document');
+      setSimMedia({ url: media.url, kind });
+    } catch (err) { /* ignore */ } finally { setSimUploading(false); }
   };
 
   const filtered = conversations.filter(c =>
@@ -335,9 +402,17 @@ const WhatsAppAI = () => {
                       <span className="wa-sender">{g.m.sender_type === 'bot' ? <><Bot size={11} /> AI Template</> : <><User size={11} /> {activeConv.assigned_agent || 'You'}</>}</span>
                     )}
                     {g.m.msg_type === 'image' && g.m.media_url && (
-                      <img className="wa-media" src={g.m.media_url} alt="attachment" />
+                      <img className="wa-media" src={mediaSrc(g.m.media_url)} alt="attachment" />
                     )}
-                    <span className="wa-text">{g.m.content}</span>
+                    {g.m.msg_type === 'video' && g.m.media_url && (
+                      <video className="wa-media" src={mediaSrc(g.m.media_url)} controls preload="metadata" />
+                    )}
+                    {(g.m.msg_type === 'document' || g.m.msg_type === 'audio') && g.m.media_url && (
+                      <a className="wa-file" href={mediaSrc(g.m.media_url)} target="_blank" rel="noreferrer">
+                        <FileText size={16} /> Open {g.m.msg_type}
+                      </a>
+                    )}
+                    {g.m.content && <span className="wa-text">{g.m.content}</span>}
                     <span className="wa-meta">
                       {fmtTime(g.m.created_at)}
                       {g.m.direction === 'outbound' && <CheckCheck size={13} className={g.m.status === 'read' ? 'read' : ''} />}
@@ -392,6 +467,21 @@ const WhatsAppAI = () => {
             )}
 
             <div className="wa-composer">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                style={{ display: 'none' }}
+                onChange={onPickFile}
+              />
+              <button
+                className="wa-attach"
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                disabled={uploading}
+                title="Send photo or video"
+              >
+                {uploading ? <span className="wa-attach-pct">{uploadPct}%</span> : <ImageIcon size={18} />}
+              </button>
               <button
                 className={`wa-sparkle ${suggestShown ? 'on' : ''}`}
                 onClick={() => (suggestShown ? setSuggestShown(false) : fetchSuggestions(false))}
@@ -401,7 +491,7 @@ const WhatsAppAI = () => {
               </button>
               <input
                 className="wa-input"
-                placeholder="Type a message…"
+                placeholder={uploading ? `Uploading… ${uploadPct}%` : 'Type a message…'}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
@@ -471,14 +561,28 @@ const WhatsAppAI = () => {
 
       {/* ============ Simulate inbound (demo) ============ */}
       {showSim && (
-        <div className="wa-modal-overlay" onClick={() => setShowSim(false)}>
+        <div className="wa-modal-overlay" onClick={() => { setShowSim(false); setSimMedia(null); }}>
           <div className="wa-modal sm" onClick={e => e.stopPropagation()}>
-            <div className="wa-modal-head"><h3>Simulate customer reply</h3><button onClick={() => setShowSim(false)}><X size={18} /></button></div>
-            <p className="wa-modal-hint">Demo only — mimics an incoming WhatsApp message from the customer so you can see AI suggestions in action.</p>
-            <textarea autoFocus value={simText} onChange={e => setSimText(e.target.value)} placeholder='e.g. "Y" or "Yes, tell me more about the offer"' />
+            <div className="wa-modal-head"><h3>Simulate customer reply</h3><button onClick={() => { setShowSim(false); setSimMedia(null); }}><X size={18} /></button></div>
+            <p className="wa-modal-hint">Demo only — mimics an incoming WhatsApp message (text and/or a photo/video) from the customer so you can see it in the portal and get AI suggestions.</p>
+            <textarea autoFocus value={simText} onChange={e => setSimText(e.target.value)} placeholder='e.g. "Y" or "Here is my current car" (optional if attaching media)' />
+            <div className="wa-sim-attach">
+              <label className="wa-btn ghost">
+                {simUploading ? 'Uploading…' : (simMedia ? `Attached: ${simMedia.kind}` : 'Attach photo / video')}
+                <input type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={onPickSimFile} />
+              </label>
+              {simMedia && (
+                <div className="wa-sim-preview">
+                  {simMedia.kind === 'image'
+                    ? <img src={mediaSrc(simMedia.url)} alt="preview" />
+                    : <video src={mediaSrc(simMedia.url)} controls />}
+                  <button onClick={() => setSimMedia(null)} title="Remove"><X size={14} /></button>
+                </div>
+              )}
+            </div>
             <div className="wa-modal-actions">
-              <button className="wa-btn ghost" onClick={() => setShowSim(false)}>Cancel</button>
-              <button className="wa-btn primary" onClick={simulateInbound} disabled={!simText.trim()}>Receive message</button>
+              <button className="wa-btn ghost" onClick={() => { setShowSim(false); setSimMedia(null); }}>Cancel</button>
+              <button className="wa-btn primary" onClick={simulateInbound} disabled={!simText.trim() && !simMedia}>Receive message</button>
             </div>
           </div>
         </div>

@@ -1404,6 +1404,9 @@ async def dial_opportunity(opportunity_id: int, dial_req: DialRequest, current_u
     
     formatted_phone = result
     
+    # Auto-open a WhatsApp thread for this lead (voice agent outreach -> WhatsApp handoff)
+    await _wa_auto_open_from_opportunity(opportunity_id, formatted_phone, brand_id, current_user.get('username'))
+    
     # Call the AI Voice Calling API
     import httpx
     
@@ -2324,11 +2327,22 @@ class WAConversationCreate(BaseModel):
 
 class WATextSend(BaseModel):
     content: str
-    msg_type: str = "text"               # text | image
+    msg_type: str = "text"               # text | image | video
     media_url: Optional[str] = None
 
 class WASimulateInbound(BaseModel):
-    content: str
+    content: str = ""
+    msg_type: str = "text"               # text | image | video
+    media_url: Optional[str] = None
+
+class WAUploadInit(BaseModel):
+    filename: str
+    content_type: Optional[str] = None
+
+class WAUploadComplete(BaseModel):
+    upload_id: str
+    filename: str
+    content_type: Optional[str] = None
 
 class WAAppointmentCreate(BaseModel):
     date: str
@@ -2406,6 +2420,187 @@ async def _wa_touch_conversation(conv_id: str, last_message: str, direction: str
     if inc:
         ops["$inc"] = inc
     await mongo_db.brandsxai_wa_conversations.update_one({"id": conv_id}, ops)
+
+# -------- Media storage + chunked upload --------
+WA_MEDIA_DIR = ROOT_DIR / "wa_media"
+WA_MEDIA_TMP = WA_MEDIA_DIR / "tmp"
+WA_MEDIA_DIR.mkdir(exist_ok=True)
+WA_MEDIA_TMP.mkdir(exist_ok=True)
+
+def _media_kind(content_type: str) -> str:
+    ct = (content_type or "").lower()
+    if ct.startswith("video"):
+        return "video"
+    if ct.startswith("image"):
+        return "image"
+    if ct.startswith("audio"):
+        return "audio"
+    return "document"
+
+def _ext_for(filename: str) -> str:
+    import os as _os
+    return _os.path.splitext(filename or "")[1][:10]
+
+async def wa_send_media(to: str, media_url_or_path: str, kind: str, caption: str = ""):
+    """Best-effort media send. Simulation fallback when Meta not configured."""
+    if not wa_is_live():
+        return {"simulated": True, "message_id": f"sim-{uuid.uuid4()}"}
+    import httpx
+    c = wa_config()
+    # In live mode a publicly reachable link is required by Meta; we serve media over REACT_APP_BACKEND_URL.
+    base = os.environ.get("PUBLIC_BASE_URL", "").strip()
+    link = media_url_or_path if str(media_url_or_path).startswith("http") else f"{base}{media_url_or_path}"
+    url = f"https://graph.facebook.com/{c['version']}/{c['phone_number_id']}/messages"
+    mtype = kind if kind in ("image", "video", "audio") else "document"
+    payload = {"messaging_product": "whatsapp", "to": _norm_phone(to), "type": mtype,
+               mtype: {"link": link, **({"caption": caption} if caption and mtype in ("image", "video", "document") else {})}}
+    headers = {"Authorization": f"Bearer {c['token']}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(url, headers=headers, json=payload)
+    if r.is_error:
+        logger.error(f"WA media send error: {r.status_code} {r.text[:300]}")
+        raise HTTPException(status_code=502, detail={"meta_status": r.status_code, "meta_error": r.json().get("error", {})})
+    data = r.json()
+    return {"simulated": False, "message_id": (data.get("messages") or [{}])[0].get("id")}
+
+async def _wa_download_meta_media(meta_media_id: str, mime_type: Optional[str] = None):
+    """Download a media file from Meta by media id, store locally, return served path."""
+    import httpx
+    c = wa_config()
+    headers = {"Authorization": f"Bearer {c['token']}"}
+    async with httpx.AsyncClient(timeout=40) as client:
+        meta = await client.get(f"https://graph.facebook.com/{c['version']}/{meta_media_id}", headers=headers)
+        if meta.is_error:
+            return None
+        info = meta.json()
+        media_link = info.get("url")
+        ct = info.get("mime_type") or mime_type or "application/octet-stream"
+        if not media_link:
+            return None
+        dl = await client.get(media_link, headers=headers)
+        if dl.is_error:
+            return None
+        content = dl.content
+    media_id = str(uuid.uuid4())
+    kind = _media_kind(ct)
+    ext = "." + (ct.split("/")[-1].split(";")[0]) if "/" in ct else ""
+    stored_name = f"{media_id}{ext[:10]}"
+    (WA_MEDIA_DIR / stored_name).write_bytes(content)
+    await mongo_db.brandsxai_wa_media.insert_one({
+        "media_id": media_id, "filename": f"inbound{ext}", "stored_name": stored_name,
+        "content_type": ct, "kind": kind, "brand_id": None,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return f"/api/whatsapp/media/{media_id}"
+
+@api_router.post("/whatsapp/upload/init")
+async def wa_upload_init(req: WAUploadInit, current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    upload_id = str(uuid.uuid4())
+    # create empty temp file
+    (WA_MEDIA_TMP / upload_id).write_bytes(b"")
+    return {"upload_id": upload_id}
+
+@api_router.post("/whatsapp/upload/chunk")
+async def wa_upload_chunk(request: Request, upload_id: str = Query(...), index: int = Query(0),
+                          current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    tmp_path = WA_MEDIA_TMP / upload_id
+    if not tmp_path.exists():
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    chunk = await request.body()
+    with open(tmp_path, "ab") as f:
+        f.write(chunk)
+    return {"ok": True, "index": index, "size": tmp_path.stat().st_size}
+
+@api_router.post("/whatsapp/upload/complete")
+async def wa_upload_complete(req: WAUploadComplete, current_user: dict = Depends(get_current_user)):
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    tmp_path = WA_MEDIA_TMP / req.upload_id
+    if not tmp_path.exists():
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    media_id = str(uuid.uuid4())
+    ext = _ext_for(req.filename)
+    final_name = f"{media_id}{ext}"
+    final_path = WA_MEDIA_DIR / final_name
+    tmp_path.rename(final_path)
+    content_type = req.content_type or "application/octet-stream"
+    kind = _media_kind(content_type)
+    await mongo_db.brandsxai_wa_media.insert_one({
+        "media_id": media_id, "filename": req.filename, "stored_name": final_name,
+        "content_type": content_type, "kind": kind, "brand_id": current_user.get('brand_id'),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"media_id": media_id, "url": f"/api/whatsapp/media/{media_id}", "kind": kind, "content_type": content_type, "filename": req.filename}
+
+@api_router.get("/whatsapp/media/{media_id}")
+async def wa_get_media(media_id: str):
+    """Public media serving (unguessable UUID) so <img>/<video> tags can load it."""
+    from fastapi.responses import FileResponse
+    doc = await mongo_db.brandsxai_wa_media.find_one({"media_id": media_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Media not found")
+    path = WA_MEDIA_DIR / doc["stored_name"]
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Media file missing")
+    return FileResponse(str(path), media_type=doc.get("content_type", "application/octet-stream"), filename=doc.get("filename"))
+
+# -------- Auto-open WhatsApp thread when the voice agent reaches out --------
+async def _wa_auto_open_from_opportunity(opportunity_id: int, phone: str, brand_id, agent_username: str):
+    """Create a WhatsApp conversation + send the intro template for a lead the voice agent just dialed.
+    Idempotent per phone number. Best-effort: never raises."""
+    try:
+        digits = _norm_phone(phone)
+        if not digits:
+            return None
+        existing = await mongo_db.brandsxai_wa_conversations.find_one({"brand_id": brand_id, "lead_phone": digits})
+        if existing:
+            return existing  # thread already exists; do not duplicate
+
+        opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id}, {"_id": 0}) or {}
+        lead_name = opp.get("name") or "there"
+        product = opp.get("business_name") or opp.get("notes") or "our latest models"
+        campaign_name = None
+        cid = opp.get("campaign_id")
+        if cid:
+            camp = await mongo_db.brandsxai_campaigns.find_one({"id": cid}, {"_id": 0})
+            campaign_name = camp.get("name") if camp else None
+
+        tpl = await mongo_db.brandsxai_wa_templates.find_one({"name": "welcome_offer"}, {"_id": 0})
+        body_vars = [lead_name, str(product), "our team"]
+        rendered = (tpl.get("body") if tpl else
+                    "Hi {{1}}, thanks for your interest in the {{2}}! This is {{3}} from BrandX Motors. Reply YES to know more.")
+        for i, v in enumerate(body_vars, start=1):
+            rendered = rendered.replace(f"{{{{{i}}}}}", v)
+
+        send_res = await wa_send_template(digits, "welcome_offer", (tpl.get("language") if tpl else "en") or "en", body_vars)
+        now = datetime.now(timezone.utc)
+        conv_id = str(uuid.uuid4())
+        conv = {
+            "id": conv_id, "brand_id": brand_id, "campaign_id": cid, "campaign_name": campaign_name,
+            "opportunity_id": opportunity_id, "lead_name": lead_name, "lead_phone": digits,
+            "product_interest": (str(product) if product != "our latest models" else None),
+            "stage": "Contacted", "status": "open", "unread_count": 0,
+            "last_message": rendered[:120], "last_message_at": now.isoformat(),
+            "assigned_agent": agent_username, "intent": None, "temperature": "warm",
+            "source": "voice_agent", "window_expires_at": None,
+            "created_at": now.isoformat(), "updated_at": now.isoformat()
+        }
+        await mongo_db.brandsxai_wa_conversations.insert_one(conv)
+        await mongo_db.brandsxai_wa_messages.insert_one({
+            "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "outbound",
+            "sender_type": "bot", "content": rendered, "msg_type": "template",
+            "template_name": "welcome_offer", "media_url": None, "status": "sent",
+            "wa_message_id": send_res.get("message_id"), "simulated": send_res.get("simulated", False),
+            "created_at": now.isoformat()
+        })
+        return conv
+    except Exception as e:
+        logger.error(f"WA auto-open error: {e}")
+        return None
 
 # -------- AI (Claude) helpers --------
 CLAUDE_MODEL = "claude-sonnet-4-6"
@@ -2488,8 +2683,37 @@ async def wa_create_conversation(req: WAConversationCreate, current_user: dict =
     phone = _norm_phone(req.lead_phone)
     now = datetime.now(timezone.utc)
 
+    # Validate input (edge cases)
+    if not (req.lead_name or "").strip():
+        raise HTTPException(status_code=400, detail="Lead name is required")
+    if len(phone) < 10:
+        raise HTTPException(status_code=400, detail="Enter a valid phone number with country code")
+    if not (req.template_name or "").strip():
+        raise HTTPException(status_code=400, detail="A template is required to start a conversation")
+
     # Send template via Meta (or simulation)
     send_res = await wa_send_template(phone, req.template_name, req.language, req.body_variables)
+
+    # WhatsApp = ONE thread per phone number. Reuse an existing thread instead of duplicating it.
+    existing = await mongo_db.brandsxai_wa_conversations.find_one({"brand_id": brand_id, "lead_phone": phone})
+    if existing:
+        conv_id = existing["id"]
+        msg = {
+            "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "outbound",
+            "sender_type": "bot", "content": req.template_body_rendered, "msg_type": "template",
+            "template_name": req.template_name, "media_url": None,
+            "status": "sent", "wa_message_id": send_res.get("message_id"),
+            "simulated": send_res.get("simulated", False), "created_at": now.isoformat()
+        }
+        await mongo_db.brandsxai_wa_messages.insert_one(msg)
+        await mongo_db.brandsxai_wa_conversations.update_one(
+            {"id": conv_id},
+            {"$set": {"last_message": req.template_body_rendered[:120], "last_message_at": now.isoformat(),
+                      "updated_at": now.isoformat(), "status": "open"}}
+        )
+        conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id}, {"_id": 0})
+        msg.pop("_id", None)
+        return {"conversation": conv, "message": msg, "reused": True}
 
     conv_id = str(uuid.uuid4())
     conv = {
@@ -2513,7 +2737,7 @@ async def wa_create_conversation(req: WAConversationCreate, current_user: dict =
 
     conv.pop("_id", None)
     msg.pop("_id", None)
-    return {"conversation": conv, "message": msg}
+    return {"conversation": conv, "message": msg, "reused": False}
 
 @api_router.get("/whatsapp/conversations/{conv_id}")
 async def wa_get_conversation(conv_id: str, current_user: dict = Depends(get_current_user)):
@@ -2546,8 +2770,13 @@ async def wa_send_message(conv_id: str, req: WATextSend, current_user: dict = De
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
     now = datetime.now(timezone.utc)
-    body = req.content if req.msg_type == "text" else (req.media_url or req.content)
-    send_res = await wa_send_text(conv["lead_phone"], body)
+    is_media = req.msg_type in ("image", "video", "audio", "document") and req.media_url
+    if is_media:
+        send_res = await wa_send_media(conv["lead_phone"], req.media_url, req.msg_type, caption=req.content or "")
+        preview = f"[{req.msg_type}]" + (f" {req.content}" if req.content else "")
+    else:
+        send_res = await wa_send_text(conv["lead_phone"], req.content)
+        preview = req.content
     msg = {
         "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "outbound",
         "sender_type": "human", "content": req.content, "msg_type": req.msg_type,
@@ -2555,7 +2784,7 @@ async def wa_send_message(conv_id: str, req: WATextSend, current_user: dict = De
         "simulated": send_res.get("simulated", False), "created_at": now.isoformat()
     }
     await mongo_db.brandsxai_wa_messages.insert_one(msg)
-    await _wa_touch_conversation(conv_id, req.content, "outbound")
+    await _wa_touch_conversation(conv_id, preview, "outbound")
     msg.pop("_id", None)
     return {"message": msg}
 
@@ -2568,14 +2797,16 @@ async def wa_simulate_inbound(conv_id: str, req: WASimulateInbound, current_user
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
     now = datetime.now(timezone.utc)
+    is_media = req.msg_type in ("image", "video", "audio", "document") and req.media_url
+    preview = (f"[{req.msg_type}]" + (f" {req.content}" if req.content else "")) if is_media else req.content
     msg = {
         "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "inbound",
-        "sender_type": "customer", "content": req.content, "msg_type": "text",
-        "media_url": None, "status": "delivered", "wa_message_id": f"sim-in-{uuid.uuid4()}",
+        "sender_type": "customer", "content": req.content, "msg_type": req.msg_type or "text",
+        "media_url": req.media_url, "status": "delivered", "wa_message_id": f"sim-in-{uuid.uuid4()}",
         "simulated": True, "created_at": now.isoformat()
     }
     await mongo_db.brandsxai_wa_messages.insert_one(msg)
-    await _wa_touch_conversation(conv_id, req.content, "inbound")
+    await _wa_touch_conversation(conv_id, preview or "[media]", "inbound")
     msg.pop("_id", None)
     return {"message": msg}
 
@@ -2730,7 +2961,7 @@ async def wa_webhook_receive(request: Request):
             for m in value.get("messages", []):
                 wa_id = m.get("from")
                 phone = _norm_phone(wa_id)
-                text = (m.get("text") or {}).get("body") or m.get("type", "message")
+                mtype = m.get("type", "text")
                 conv = await mongo_db.brandsxai_wa_conversations.find_one({"lead_phone": phone})
                 if not conv:
                     # create a bare conversation for unknown inbound
@@ -2744,13 +2975,36 @@ async def wa_webhook_receive(request: Request):
                 existing = await mongo_db.brandsxai_wa_messages.find_one({"wa_message_id": m.get("id")})
                 if existing:
                     continue
+                # Resolve content + media for text and media message types
+                media_url = None
+                caption = ""
+                if mtype == "text":
+                    content = (m.get("text") or {}).get("body") or ""
+                elif mtype in ("image", "video", "audio", "document", "sticker"):
+                    media_obj = m.get(mtype) or {}
+                    caption = media_obj.get("caption") or ""
+                    content = caption
+                    meta_media_id = media_obj.get("id")
+                    # Live mode: download the media from Meta and serve it locally so it's viewable in the portal
+                    if meta_media_id and wa_is_live():
+                        try:
+                            local = await _wa_download_meta_media(meta_media_id, media_obj.get("mime_type"))
+                            if local:
+                                media_url = local
+                        except Exception as e:
+                            logger.error(f"WA media download error: {e}")
+                    if not content:
+                        content = f"[{mtype}]"
+                else:
+                    content = m.get(mtype, {}).get("body", f"[{mtype}]") if isinstance(m.get(mtype), dict) else f"[{mtype}]"
                 await mongo_db.brandsxai_wa_messages.insert_one({
                     "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "inbound",
-                    "sender_type": "customer", "content": text, "msg_type": m.get("type", "text"),
-                    "media_url": None, "status": "delivered", "wa_message_id": m.get("id"),
+                    "sender_type": "customer", "content": content, "msg_type": mtype,
+                    "media_url": media_url, "status": "delivered", "wa_message_id": m.get("id"),
                     "simulated": False, "created_at": now.isoformat()
                 })
-                await _wa_touch_conversation(conv_id, text, "inbound")
+                preview = (f"[{mtype}]" + (f" {caption}" if caption else "")) if media_url or mtype != "text" else content
+                await _wa_touch_conversation(conv_id, preview, "inbound")
             for status in value.get("statuses", []):
                 await mongo_db.brandsxai_wa_messages.update_one(
                     {"wa_message_id": status.get("id")},
