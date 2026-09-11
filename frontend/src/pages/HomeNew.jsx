@@ -139,6 +139,12 @@ const HomeNew = () => {
 
   return (
     <div className="home-new-container">
+      {/* Prominent top-right Sign In (always visible) */}
+      <Link to="/login" className="home-topbar-signin" data-testid="home-signin-button">
+        <User size={16} />
+        <span>Sign In</span>
+      </Link>
+
       {/* Left Navigation Sidebar - OUTSIDE THE CARD */}
       <nav className="left-sidebar">
         <div className="sidebar-logo">

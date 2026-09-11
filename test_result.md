@@ -206,7 +206,7 @@ backend:
 frontend:
   - task: "WhatsApp AI page UI"
     implemented: true
-    working: "NA"
+    working: true
     file: "frontend/src/pages/WhatsAppAI.jsx"
     stuck_count: 0
     priority: "high"
@@ -215,12 +215,26 @@ frontend:
         - working: "NA"
           agent: "main"
           comment: "3-pane WhatsApp-style UI wired into Dashboard. Not yet tested via agent (awaiting user permission)."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: WhatsApp AI page accessible from dashboard sidebar. UI displays correctly with 'Chats' heading, conversation list showing 'Rahul Sharma' with 'Warm' temperature and 'Visit Booked' status. 3-pane layout working as expected."
+  - task: "Landing page Sign In button (bug fix)"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/HomeNew.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "✅ BUG FIX VERIFIED: Sign In button (data-testid='home-signin-button') is visible and functional on landing page. Tested on desktop (1920x800) at position x=1785 (top-right) and mobile (390x844) at position x=279. Button successfully navigates to /login page. Login flow works correctly (mukesh/mukesh123 → dashboard → WhatsApp AI accessible). No console errors detected."
 
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 1
-  run_ui: false
+  test_sequence: 2
+  run_ui: true
 
 test_plan:
   current_focus: []
@@ -233,3 +247,5 @@ agent_communication:
       message: "Please test all WhatsApp AI backend endpoints. Login as brand user mukesh/mukesh123 via POST /api/auth/login to get a JWT (use it as Bearer for all /api/whatsapp/* except the webhook). App runs in SIMULATION mode (no Meta creds), so sending template/text should succeed and be marked simulated=true. Flow to test: list templates -> create conversation with a template -> get conversation -> send a human text -> simulate an inbound customer reply -> poll messages with ?after= -> get AI suggestions (expect ~3 + temperature) -> get summary -> book appointment (stage becomes 'Visit Booked'). Also test webhook: GET /api/whatsapp/webhook with hub.mode=subscribe&hub.verify_token=brandsxai_wa_verify_7bK9mQ2xP4&hub.challenge=12345 should return 12345; wrong token -> 403. Claude suggestions/summary use EMERGENT_LLM_KEY (already configured)."
     - agent: "testing"
       message: "✅ ALL TESTS PASSED (14/14): Completed comprehensive testing of WhatsApp AI backend. All endpoints working correctly in SIMULATION mode. Key results: (1) Templates: 6 templates seeded and retrievable. (2) Conversations: Create/list/get working, simulated=true for all sends. (3) Messages: Human text send, inbound simulation, and polling with ?after parameter all working. (4) Claude AI: Suggestions endpoint returns 3 suggestions + temperature + intent. Summary endpoint returns summary + next_step. Claude integration (claude-sonnet-4-6) working via emergentintegrations. (5) Appointments: Booking creates appointment and updates stage to 'Visit Booked'. (6) Webhook: Verification working (correct token returns challenge, wrong token returns 403). (7) Auth: JWT authentication working, auth guard correctly rejects unauthorized requests. No issues found. Ready for frontend integration testing (requires user permission)."
+    - agent: "testing"
+      message: "✅ BUG FIX VERIFICATION COMPLETE (7/7 tests passed): Verified the reported bug fix - users can now easily access the login screen from the landing page. The 'Sign In' button (data-testid='home-signin-button') is prominently displayed at top-right on both desktop (1920x800, position x=1785) and mobile (390x844, position x=279) viewports. Button successfully navigates to /login page. Complete login flow tested: mukesh/mukesh123 → dashboard → WhatsApp AI feature accessible from sidebar. WhatsApp AI page displays correctly with 'Chats' heading and 'Rahul Sharma' conversation visible. No console errors detected. Bug fix is working as intended."

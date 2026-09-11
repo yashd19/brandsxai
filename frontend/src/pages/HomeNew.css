@@ -1,3 +1,39 @@
+/* Prominent top-right Sign In button */
+.home-topbar-signin {
+  position: fixed;
+  top: 58px;
+  right: 24px;
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #6C4CF1;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 999px;
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(108, 76, 241, 0.35);
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.home-topbar-signin:hover {
+  background: #5a3ce0;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(108, 76, 241, 0.45);
+}
+.home-topbar-signin svg { flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .home-topbar-signin {
+    top: 50px;
+    right: 12px;
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+}
+
+
 /* Case Studies Section */
 .case-studies-section {
   width: 100%;
