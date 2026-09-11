@@ -2810,6 +2810,81 @@ async def wa_simulate_inbound(conv_id: str, req: WASimulateInbound, current_user
     msg.pop("_id", None)
     return {"message": msg}
 
+# -------- System ingest (voice AI platform / external systems push messages here) --------
+class WAIngestMessage(BaseModel):
+    lead_phone: str
+    lead_name: Optional[str] = None
+    brand_id: Optional[int] = 1
+    campaign_name: Optional[str] = None
+    product_interest: Optional[str] = None
+    direction: str = "outbound"          # outbound (business/voice-agent) | inbound (customer)
+    sender_type: Optional[str] = None    # bot | human | customer
+    content: str = ""
+    msg_type: str = "text"               # text | template | image | video | document
+    media_url: Optional[str] = None
+    template_name: Optional[str] = None
+    wa_message_id: Optional[str] = None  # Meta message id (so later status webhooks map to it)
+
+async def _wa_find_or_create_conv(brand_id, phone, lead_name=None, campaign_name=None,
+                                   product_interest=None, source=None):
+    conv = await mongo_db.brandsxai_wa_conversations.find_one({"brand_id": brand_id, "lead_phone": phone})
+    if conv:
+        return conv, False
+    now = datetime.now(timezone.utc)
+    conv = {
+        "id": str(uuid.uuid4()), "brand_id": brand_id, "campaign_id": None, "campaign_name": campaign_name,
+        "opportunity_id": None, "lead_name": lead_name or phone, "lead_phone": phone,
+        "product_interest": product_interest, "stage": "Contacted", "status": "open",
+        "unread_count": 0, "last_message": "", "last_message_at": now.isoformat(),
+        "assigned_agent": None, "intent": None, "temperature": "warm", "source": source,
+        "window_expires_at": None, "created_at": now.isoformat(), "updated_at": now.isoformat()
+    }
+    await mongo_db.brandsxai_wa_conversations.insert_one(conv)
+    return conv, True
+
+@api_router.post("/whatsapp/ingest/message")
+async def wa_ingest_message(req: WAIngestMessage, request: Request):
+    """System-to-system: the voice AI platform (or WhatsApp middleware) pushes any message it sent or
+    received. The thread appears automatically in the inbox — no manual 'start chat' needed.
+    Secured with the X-Ingest-Token header (env WA_INGEST_TOKEN)."""
+    ingest_token = os.environ.get("WA_INGEST_TOKEN", "").strip()
+    if ingest_token:
+        if request.headers.get("X-Ingest-Token", "") != ingest_token:
+            raise HTTPException(status_code=403, detail="Invalid ingest token")
+    phone = _norm_phone(req.lead_phone)
+    if len(phone) < 10:
+        raise HTTPException(status_code=400, detail="Valid phone with country code required")
+    direction = "inbound" if req.direction == "inbound" else "outbound"
+    default_sender = "customer" if direction == "inbound" else ("bot" if req.msg_type == "template" else "human")
+    sender_type = req.sender_type or default_sender
+
+    conv, created = await _wa_find_or_create_conv(
+        req.brand_id or 1, phone, req.lead_name, req.campaign_name, req.product_interest, source="voice_agent"
+    )
+    conv_id = conv["id"]
+    now = datetime.now(timezone.utc)
+
+    # Idempotency: skip if this exact Meta message id was already recorded
+    if req.wa_message_id:
+        dupe = await mongo_db.brandsxai_wa_messages.find_one({"wa_message_id": req.wa_message_id})
+        if dupe:
+            existing_conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id}, {"_id": 0})
+            return {"conversation": existing_conv, "message": {k: v for k, v in dupe.items() if k != "_id"}, "duplicate": True}
+
+    is_media = req.msg_type in ("image", "video", "audio", "document") and req.media_url
+    preview = (f"[{req.msg_type}]" + (f" {req.content}" if req.content else "")) if is_media else (req.content or f"[{req.msg_type}]")
+    msg = {
+        "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": direction,
+        "sender_type": sender_type, "content": req.content, "msg_type": req.msg_type,
+        "template_name": req.template_name, "media_url": req.media_url, "status": "delivered" if direction == "inbound" else "sent",
+        "wa_message_id": req.wa_message_id or f"ext-{uuid.uuid4()}", "simulated": False, "created_at": now.isoformat()
+    }
+    await mongo_db.brandsxai_wa_messages.insert_one(msg)
+    await _wa_touch_conversation(conv_id, preview, direction)
+    conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id}, {"_id": 0})
+    msg.pop("_id", None)
+    return {"conversation": conv, "message": msg, "thread_created": created}
+
 # -------- AI endpoints --------
 @api_router.post("/whatsapp/conversations/{conv_id}/suggestions")
 async def wa_suggestions(conv_id: str, current_user: dict = Depends(get_current_user)):

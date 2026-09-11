@@ -115,6 +115,16 @@ BrandsXAI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featur
   - New Mongo collections: brandsxai_wa_templates, brandsxai_wa_conversations, brandsxai_wa_messages, brandsxai_wa_appointments
   - Backend: 14/14 endpoint tests passed
 
+### WhatsApp AI - auto-appear + media (latest)
+- Threads appear AUTOMATICALLY (inbox auto-refreshes ~every few seconds), no manual "start chat":
+  - Meta webhook (`/api/whatsapp/webhook`) auto-creates/updates threads for every inbound customer message
+  - Voice-agent dial (`/api/opportunities/{id}/dial`) auto-opens a thread + fires the intro template
+  - System ingest `POST /api/whatsapp/ingest/message` (header `X-Ingest-Token`) lets the voice AI platform / WhatsApp middleware push any sent/received message so it's tracked and viewable
+- One thread per phone number strictly enforced (dedupe on create/ingest/webhook); idempotent by Meta `wa_message_id`
+- Images & videos both directions: chunked upload (`/upload/init|chunk|complete`), served at `/api/whatsapp/media/{id}`; inbound Meta media downloaded & served; rendered as image/video/file bubbles
+- WhatsApp doodle chat background
+- New collection: brandsxai_wa_media
+
 ### Pending Tasks
 - [ ] **P1**: AI Post-Call Processing (webhooks for call summaries/recordings)
 - [ ] **P2**: About Us page content
