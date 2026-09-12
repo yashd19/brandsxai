@@ -529,3 +529,31 @@ agent_communication:
       message: "Frontend verification needed for the user-reported login issue and the new delivery ticks. Credentials ARE valid (testuser/test123, mukesh/mukesh123, madoveradmin/admin@123) - please confirm login works end to end from the preview URL and that the tick component renders the right icon/colour per status. Do NOT send real WhatsApp messages to any real number."
     - agent: "testing"
       message: "✅ VERIFICATION COMPLETE (ALL TESTS PASSED - 100% success). Comprehensive testing confirms: (1) LOGIN IS NOT BROKEN - all 3 credentials work perfectly (testuser/test123, mukesh/mukesh123, madoveradmin/admin@123), negative case correctly rejects wrong password with 'Invalid credentials' error. User was likely on wrong URL. (2) DELIVERY TICKS FEATURE WORKING PERFECTLY - all 3 outbound messages show wa-tick-read with EXACT color rgb(83, 189, 235), tooltips show correct timestamps including full progression 'Sent 08:26 PM · Delivered 08:26 PM · Read 08:48 PM'. (3) LIVE TICK REFRESH WORKING - app polls /message-status every 2.5s (4 calls in 10s), ticks remain rendered with no flickering. (4) Thread stability confirmed, no whole-page scroll. (5) Minor: Mobile horizontal overflow (8 elements) does not block functionality. Feature is production-ready."
+
+  - task: "WhatsApp AI - inbound customer reply CONFIRMED LIVE"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "INBOUND NOW PROVEN WITH REAL META TRAFFIC. The user replied from +1 201 268 8622 and two real inbound 'messages' webhook events arrived and were accepted (HTTP 200): 'Hey' at 21:05:46 and 'Nothing yet as of now' at 21:05:51. Totals from the ngrok inspector: 23 webhook POSTs from Meta = 21 status events + 2 inbound messages. DB state: thread 'Prod Test (Mukesh)' / 12012688622, unread_count=2, window_expires_at=2026-09-13T21:05:51 (correctly now+24h), 3 outbound all status 'read', 2 inbound status 'delivered'. Browser check: thread list preview updated to 'Nothing yet as of now', green .wa-badge showed '2', and the open thread rendered 3 .wa-msg.out bubbles plus 2 .wa-msg.in white left-aligned bubbles ('Hey', 'Nothing yet as of now') with ZERO tick elements inside inbound bubbles (correct - ticks are outbound only). Full round trip send -> delivered -> read -> reply is working."
+
+  - task: "WhatsApp AI - Claude suggestions + AI summary BROKEN (missing ANTHROPIC_API_KEY)"
+    implemented: true
+    working: false
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: false
+          agent: "main"
+          comment: "NEW BUG FOUND while documenting env vars. POST /api/whatsapp/conversations/{id}/suggestions and GET /api/whatsapp/conversations/{id}/summary both return HTTP 500 {'detail':'AI service not configured'}. Root cause: _wa_claude_json() at ~line 2650 reads os.environ['ANTHROPIC_API_KEY'] and POSTs directly to https://api.anthropic.com/v1/messages, but ANTHROPIC_API_KEY is not present in backend/.env. Note the PRD says this feature was originally built with 'claude-sonnet-4-6 via emergentintegrations + EMERGENT_LLM_KEY', so the implementation has drifted to a raw Anthropic API call. EMERGENT_LLM_KEY does NOT work against api.anthropic.com directly - it requires the emergentintegrations library. Also note the Claim Processing feature has the same class of problem: it calls google.generativeai.configure(api_key=EMERGENT_LLM_KEY) directly at ~line 2031. NOT FIXED - awaiting user decision on whether to use the Emergent LLM key (needs the integration playbook + emergentintegrations) or their own Anthropic API key. Do NOT guess; ask the user."
+
+agent_communication:
+    - agent: "main"
+      message: "Inbound live traffic confirmed working end to end. Separately discovered that the WhatsApp AI 'suggested replies' and 'AI summary' endpoints are broken with 500 'AI service not configured' because ANTHROPIC_API_KEY is unset and the code calls api.anthropic.com directly rather than going through emergentintegrations with EMERGENT_LLM_KEY. Asked the user which route to take before implementing. Also wrote /app/LOCAL_SETUP.md with full local setup + ngrok + credential placement + restart commands + 8 test cases."
