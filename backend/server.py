@@ -3039,6 +3039,186 @@ async def wa_book_appointment(conv_id: str, req: WAAppointmentCreate, current_us
     return {"appointment": appt, "message": msg}
 
 # -------- Webhook (public, no auth) --------
+
+# -------- Connection diagnostics (validates Meta credentials live) --------
+def _wa_token_shape(tok: str) -> dict:
+    """Heuristics that catch the common copy-paste corruption of Meta tokens."""
+    if not tok:
+        return {"present": False}
+    base64url_ok = bool(re.fullmatch(r"[A-Za-z0-9_\-]+", tok))
+    looks_mangled = tok.count("_") == 0 and tok.count("-") == 0 and len(tok) > 100
+    return {
+        "present": True,
+        "length": len(tok),
+        "prefix": tok[:8],
+        "starts_with_EAA": tok.startswith("EAA"),
+        "underscores": tok.count("_"),
+        "hyphens": tok.count("-"),
+        "charset_valid_base64url": base64url_ok,
+        # A genuine Meta token of this length virtually always contains '_' and/or '-'
+        "looks_copy_paste_mangled": looks_mangled,
+    }
+
+
+@api_router.get("/whatsapp/status")
+async def wa_status(current_user: dict = Depends(get_current_user)):
+    """Live health check of the WhatsApp Business (Meta Cloud API) connection.
+
+    Verifies the access token against Meta, returns the verified business profile,
+    quality rating and the REAL approved template list from the WABA, plus a
+    format check of the app secret / verify token and the exact webhook URL to
+    register in the Meta dashboard.
+    """
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+
+    c = wa_config()
+    secret = c["app_secret"]
+    base = (os.environ.get("PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
+
+    result = {
+        "live_mode": wa_is_live(),
+        "graph_version": c["version"],
+        "config": {
+            "phone_number_id": c["phone_number_id"] or None,
+            "access_token": _wa_token_shape(c["token"]),
+            "app_secret": {
+                "present": bool(secret),
+                "length": len(secret),
+                # Meta app secrets are exactly 32 lowercase hex chars
+                "valid_format": bool(re.fullmatch(r"[0-9a-fA-F]{32}", secret or "")),
+            },
+            "verify_token": {"present": bool(c["verify_token"]), "length": len(c["verify_token"])},
+        },
+        "webhook": {
+            "callback_url": (f"{base}/api/whatsapp/webhook" if base else "/api/whatsapp/webhook"),
+            "verify_token_to_use": c["verify_token"] or None,
+            "subscribe_to_field": "messages",
+        },
+        "token_valid": False,
+        "phone_number": None,
+        "waba_ids": [],
+        "approved_templates": [],
+        "errors": [],
+        "checks": [],
+    }
+
+    def _chk(name, ok, detail=""):
+        result["checks"].append({"check": name, "ok": bool(ok), "detail": detail})
+
+    _chk("phone_number_id_set", bool(c["phone_number_id"]),
+         "Set WHATSAPP_PHONE_NUMBER_ID" if not c["phone_number_id"] else "")
+    _chk("access_token_set", bool(c["token"]), "Set META_ACCESS_TOKEN" if not c["token"] else "")
+    _chk("app_secret_format", result["config"]["app_secret"]["valid_format"],
+         "META_APP_SECRET must be the 32-char hex App Secret (Settings > Basic > App Secret). "
+         "A wrong value makes Meta's real webhooks fail signature checks with 403."
+         if not result["config"]["app_secret"]["valid_format"] else "")
+    _chk("verify_token_set", bool(c["verify_token"]), "Set WEBHOOK_VERIFY_TOKEN" if not c["verify_token"] else "")
+    _chk("token_shape", not result["config"]["access_token"].get("looks_copy_paste_mangled", False),
+         "Token contains no '_' or '-' characters, which is the classic sign of a corrupted "
+         "copy-paste. Re-copy it using the Copy button in WhatsApp > API Setup."
+         if result["config"]["access_token"].get("looks_copy_paste_mangled") else "")
+
+    if not wa_is_live():
+        result["errors"].append("Not configured - running in SIMULATION mode.")
+        _chk("meta_reachable", False, "Skipped, credentials incomplete")
+        return result
+
+    import httpx
+    headers = {"Authorization": f"Bearer {c['token']}"}
+    try:
+        async with httpx.AsyncClient(timeout=25) as client:
+            # 1. Validate token + read the phone number node
+            r = await client.get(
+                f"https://graph.facebook.com/{c['version']}/{c['phone_number_id']}",
+                headers=headers,
+                params={"fields": "id,display_phone_number,verified_name,quality_rating,"
+                                  "code_verification_status,platform_type,throughput"},
+            )
+            if r.status_code == 200:
+                result["token_valid"] = True
+                result["phone_number"] = r.json()
+                _chk("meta_reachable", True, "Token accepted by Meta")
+                _chk("phone_number_id_valid", True,
+                     f"Verified name: {r.json().get('verified_name')}")
+            else:
+                err = (r.json() or {}).get("error", {})
+                result["errors"].append({"stage": "phone_number_node", "http": r.status_code, "error": err})
+                hint = ""
+                if err.get("code") == 190:
+                    msg = (err.get("message") or "").lower()
+                    if "decrypted" in msg or "malformed" in msg:
+                        hint = ("Token is corrupted/garbled (not merely expired). Re-copy it with the Copy "
+                                "button from WhatsApp > API Setup, or generate a permanent System User token.")
+                    elif "expired" in msg:
+                        hint = "Token has expired. Temporary tokens last 24h - generate a System User token."
+                    else:
+                        hint = "Token rejected by Meta (invalid, revoked, or wrong app)."
+                _chk("meta_reachable", False, hint or str(err.get("message", ""))[:200])
+
+            # 2. Discover WABA id(s) via token introspection, then list real templates
+            if result["token_valid"]:
+                waba_ids = []
+                env_waba = (os.environ.get("WHATSAPP_WABA_ID", "") or "").strip()
+                if env_waba:
+                    waba_ids.append(env_waba)
+                try:
+                    d = await client.get(
+                        f"https://graph.facebook.com/{c['version']}/debug_token",
+                        headers=headers, params={"input_token": c["token"]},
+                    )
+                    if d.status_code == 200:
+                        data = (d.json() or {}).get("data", {})
+                        result["token_info"] = {
+                            "app_id": data.get("app_id"),
+                            "application": data.get("application"),
+                            "type": data.get("type"),
+                            "expires_at": data.get("expires_at"),
+                            "never_expires": data.get("expires_at") == 0,
+                            "scopes": data.get("scopes", []),
+                        }
+                        for gs in data.get("granular_scopes", []) or []:
+                            if "whatsapp_business" in (gs.get("scope") or ""):
+                                for t in gs.get("target_ids", []) or []:
+                                    if t not in waba_ids:
+                                        waba_ids.append(t)
+                        _chk("token_never_expires", data.get("expires_at") == 0,
+                             "Temporary token - it will stop working. Use a System User token for production."
+                             if data.get("expires_at") != 0 else "")
+                except Exception as e:
+                    result["errors"].append({"stage": "debug_token", "error": str(e)[:200]})
+
+                result["waba_ids"] = waba_ids
+                for waba in waba_ids:
+                    try:
+                        t = await client.get(
+                            f"https://graph.facebook.com/{c['version']}/{waba}/message_templates",
+                            headers=headers, params={"fields": "name,status,category,language", "limit": 100},
+                        )
+                        if t.status_code == 200:
+                            for tpl in (t.json() or {}).get("data", []):
+                                result["approved_templates"].append({
+                                    "waba_id": waba, "name": tpl.get("name"),
+                                    "status": tpl.get("status"), "category": tpl.get("category"),
+                                    "language": tpl.get("language"),
+                                })
+                        else:
+                            result["errors"].append({"stage": f"templates:{waba}", "http": t.status_code,
+                                                     "error": (t.json() or {}).get("error", {})})
+                    except Exception as e:
+                        result["errors"].append({"stage": f"templates:{waba}", "error": str(e)[:200]})
+                approved = [t for t in result["approved_templates"] if t.get("status") == "APPROVED"]
+                _chk("has_approved_templates", bool(approved),
+                     "No APPROVED templates found - the first message to a new contact MUST be an "
+                     "approved template." if not approved else f"{len(approved)} approved")
+    except Exception as e:
+        result["errors"].append({"stage": "network", "error": str(e)[:300]})
+        _chk("meta_reachable", False, f"Network error: {str(e)[:160]}")
+
+    result["ready_to_send"] = bool(result["token_valid"] and result["config"]["app_secret"]["valid_format"])
+    return result
+
+
 @api_router.get("/whatsapp/webhook")
 async def wa_webhook_verify(
     hub_mode: str = Query(None, alias="hub.mode"),

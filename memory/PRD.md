@@ -125,6 +125,25 @@ BrandsXAI is a multi-tenant SaaS platform for Voice AI calling campaigns. Featur
 - WhatsApp doodle chat background
 - New collection: brandsxai_wa_media
 
+### WhatsApp AI - LIVE Meta wiring + connection diagnostics (latest session)
+- Recreated missing `backend/.env` and `frontend/.env` (fresh container; both are gitignored)
+- LIVE Meta creds wired: `WHATSAPP_PHONE_NUMBER_ID`, `WEBHOOK_VERIFY_TOKEN`, `META_APP_SECRET` (32-char hex, valid) -> `live_mode: true`
+- NEW endpoint `GET /api/whatsapp/status` - live connection health check:
+  token validated against Graph API, verified business name / display number / quality rating,
+  `debug_token` info (app id, scopes, never_expires), WABA ids, REAL approved template list,
+  app-secret format check, token copy-paste-corruption heuristic, exact webhook callback URL, `ready_to_send` flag
+- Verified working: webhook GET verify (200 + challenge / 403 on wrong token), webhook POST HMAC-SHA256
+  signature validation against the real app secret (200 valid / 403 invalid / 403 missing),
+  inbound auto-threading, dedupe by `wa_message_id`, unread counters, 24h service window
+- Public HTTPS webhook URL (platform ingress, permanent, no ngrok needed):
+  `https://f11fcb3b-5aba-4b2b-a12a-6a2028a9906c.preview.emergentagent.com/api/whatsapp/webhook`
+- ngrok agent v3.39.11 installed in container + authtoken saved, but blocked by `ERR_NGROK_108`
+  (free plan = 3 simultaneous agent sessions, user already has 3). User's ngrok domain
+  `shily-orthopneic-shawnna.ngrok-free.dev` currently tunnels to the USER'S OWN backend (MySQL primary), not this container.
+- BLOCKED: outbound sending. `META_ACCESS_TOKEN` supplied is corrupted (Meta 401 code 190
+  "The access token could not be decrypted"); 234 chars with zero `_`/`-`. Needs a freshly copied
+  token or a permanent System User token. Inbound flow is fully verified.
+
 ### Pending Tasks
 - [ ] **P1**: AI Post-Call Processing (webhooks for call summaries/recordings)
 - [ ] **P2**: About Us page content
