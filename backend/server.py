@@ -2388,6 +2388,82 @@ def wa_verify_tokens():
     ]
     return [t for t in toks if t]
 
+def wa_app_secrets():
+    """All configured app secrets. META_APP_SECRET may hold a comma-separated list,
+    which is handy when several Meta apps could own the WABA."""
+    raw = os.environ.get("META_APP_SECRET", "") or ""
+    return [s.strip() for s in raw.split(",") if s.strip()]
+
+# Cached result of checking META_APP_SECRET against Meta (avoids a Graph call per webhook)
+_WA_SECRET_STATE = {"checked_at": 0.0, "valid": None, "app_id": None, "detail": ""}
+
+async def wa_check_app_secret(force: bool = False) -> dict:
+    """Ask Meta whether the configured app secret really belongs to the app that owns this token.
+
+    Uses the app-token grant: an App ID + App Secret pair that do not belong together are
+    rejected with 'Error validating client secret.' This is what lets us tell a genuine
+    forged-signature attempt apart from a simple misconfiguration.
+    """
+    import time as _time
+    if not force and _WA_SECRET_STATE["valid"] is not None and (_time.time() - _WA_SECRET_STATE["checked_at"]) < 600:
+        return _WA_SECRET_STATE
+
+    secrets = wa_app_secrets()
+    c = wa_config()
+    if not secrets or not c["token"]:
+        _WA_SECRET_STATE.update({"checked_at": _time.time(), "valid": None,
+                                 "detail": "No app secret or access token configured"})
+        return _WA_SECRET_STATE
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            d = await client.get(f"https://graph.facebook.com/{c['version']}/debug_token",
+                                 headers={"Authorization": f"Bearer {c['token']}"},
+                                 params={"input_token": c["token"]})
+            if d.status_code != 200:
+                _WA_SECRET_STATE.update({"checked_at": _time.time(), "valid": None,
+                                         "detail": "Could not introspect access token"})
+                return _WA_SECRET_STATE
+            app_id = str(((d.json() or {}).get("data") or {}).get("app_id") or "")
+            if not app_id:
+                _WA_SECRET_STATE.update({"checked_at": _time.time(), "valid": None,
+                                         "detail": "Access token has no app_id"})
+                return _WA_SECRET_STATE
+            for sec in secrets:
+                r = await client.get("https://graph.facebook.com/oauth/access_token",
+                                     params={"client_id": app_id, "client_secret": sec,
+                                             "grant_type": "client_credentials"})
+                if r.status_code == 200 and "access_token" in r.text:
+                    _WA_SECRET_STATE.update({"checked_at": _time.time(), "valid": True, "app_id": app_id,
+                                             "detail": f"App secret is valid for app {app_id}"})
+                    return _WA_SECRET_STATE
+            _WA_SECRET_STATE.update({
+                "checked_at": _time.time(), "valid": False, "app_id": app_id,
+                "detail": (f"META_APP_SECRET does not belong to app {app_id}, which owns this WABA. "
+                           f"Copy it from App Dashboard > Settings > Basic > App Secret of app {app_id}."),
+            })
+            return _WA_SECRET_STATE
+    except Exception as e:
+        _WA_SECRET_STATE.update({"checked_at": _time.time(), "valid": None, "detail": f"check failed: {str(e)[:120]}"})
+        return _WA_SECRET_STATE
+
+def wa_payload_is_ours(payload: dict) -> bool:
+    """Sanity-check that a webhook payload really concerns OUR WABA / phone number.
+
+    Used as a secondary guard when the signature cannot be validated because the app
+    secret is misconfigured, so we never ingest messages meant for someone else.
+    """
+    waba = (os.environ.get("WHATSAPP_WABA_ID", "") or "").strip()
+    pnid = wa_config()["phone_number_id"]
+    for entry in (payload.get("entry") or []):
+        if waba and str(entry.get("id") or "") == waba:
+            return True
+        for change in (entry.get("changes") or []):
+            meta = ((change.get("value") or {}).get("metadata") or {})
+            if pnid and str(meta.get("phone_number_id") or "") == pnid:
+                return True
+    return False
+
 def wa_is_live():
     c = wa_config()
     return bool(c["phone_number_id"] and c["token"])
@@ -3223,6 +3299,17 @@ async def wa_status(current_user: dict = Depends(get_current_user)):
     def _chk(name, ok, detail=""):
         result["checks"].append({"check": name, "ok": bool(ok), "detail": detail})
 
+    # Does the app secret actually belong to the app that owns this WABA?
+    secret_state = await wa_check_app_secret()
+    result["config"]["app_secret"]["matches_app"] = secret_state.get("valid")
+    result["config"]["app_secret"]["app_id"] = secret_state.get("app_id")
+    result["config"]["app_secret"]["detail"] = secret_state.get("detail")
+    result["signature_mode"] = (os.environ.get("WA_REQUIRE_SIGNATURE", "auto").strip().lower() or "auto")
+    if secret_state.get("valid") is False:
+        _chk("app_secret_matches_app", False, secret_state.get("detail") or "")
+    elif secret_state.get("valid") is True:
+        _chk("app_secret_matches_app", True, secret_state.get("detail") or "")
+
     # Surface webhook signature failures - the classic "wrong app secret" symptom, which
     # otherwise silently drops every inbound message and delivery receipt.
     if WA_WEBHOOK_STATS["signature_fail_count"] > 0 and WA_WEBHOOK_STATS["signature_ok_count"] == 0:
@@ -3388,30 +3475,63 @@ async def wa_webhook_receive(request: Request):
     WA_WEBHOOK_STATS["last_received_at"] = now.isoformat()
 
     # ---- Signature verification (HMAC-SHA256 of the RAW body with the app secret) ----
-    require_sig = (os.environ.get("WA_REQUIRE_SIGNATURE", "true").strip().lower() != "false")
-    if c["app_secret"]:
+    # WA_REQUIRE_SIGNATURE:
+    #   "true"  -> always reject a bad/missing signature (strictest)
+    #   "false" -> never reject (debug only)
+    #   "auto"  -> DEFAULT. Reject only when the app secret is PROVEN valid for the app that
+    #              owns this WABA (so a mismatch is a real forgery). If Meta tells us the
+    #              configured secret does not belong to that app, the signature can never
+    #              match, so we accept the payload - but only if it concerns our own WABA /
+    #              phone number - and scream about it in the logs and in /api/whatsapp/status.
+    #              This stops a simple misconfiguration from silently destroying every
+    #              inbound message and delivery receipt.
+    mode = (os.environ.get("WA_REQUIRE_SIGNATURE", "auto").strip().lower() or "auto")
+    secrets = wa_app_secrets()
+    if secrets:
         supplied = request.headers.get("X-Hub-Signature-256", "")
-        expected = "sha256=" + _hmac.new(c["app_secret"].encode(), raw, _hashlib.sha256).hexdigest()
-        if _hmac.compare_digest(supplied, expected):
+        matched = False
+        expected_first = ""
+        for sec in secrets:
+            expected = "sha256=" + _hmac.new(sec.encode(), raw, _hashlib.sha256).hexdigest()
+            if not expected_first:
+                expected_first = expected
+            if supplied and _hmac.compare_digest(supplied, expected):
+                matched = True
+                break
+        if matched:
             WA_WEBHOOK_STATS["signature_ok_count"] += 1
         else:
             WA_WEBHOOK_STATS["signature_fail_count"] += 1
             WA_WEBHOOK_STATS["last_signature_error_at"] = now.isoformat()
+            secret_state = await wa_check_app_secret()
             WA_WEBHOOK_STATS["last_error"] = (
-                "X-Hub-Signature-256 mismatch - META_APP_SECRET is almost certainly wrong "
-                "(it must be the App Secret of the app that owns this WABA, from "
-                "App Dashboard > Settings > Basic > App Secret)."
+                "X-Hub-Signature-256 mismatch. " + (secret_state.get("detail") or "")
             )
             logger.error(
-                "WA webhook SIGNATURE MISMATCH. supplied=%s expected=%s body_len=%d. "
-                "META_APP_SECRET is likely wrong for this app.",
-                supplied[:25], expected[:25], len(raw),
+                "WA webhook SIGNATURE MISMATCH (mode=%s, app_secret_valid=%s). supplied=%s expected=%s body_len=%d",
+                mode, secret_state.get("valid"), supplied[:25] or "<none>", expected_first[:25], len(raw),
             )
-            if require_sig:
-                # 403 makes Meta retry and eventually disable the subscription, so make the
-                # cause unmistakable in the logs and in /api/whatsapp/status.
+            reject = True
+            if mode == "false":
+                reject = False
+            elif mode == "auto":
+                # Only fail open when the secret is PROVEN wrong (so verification is impossible)
+                if secret_state.get("valid") is False:
+                    reject = False
+            if reject:
                 raise HTTPException(status_code=403, detail="Invalid signature")
-            logger.warning("WA_REQUIRE_SIGNATURE=false -> processing UNVERIFIED webhook payload anyway")
+            # Secondary guard: never ingest traffic that is not for our own WABA/number
+            try:
+                _probe = json.loads(raw.decode("utf-8"))
+            except Exception:
+                return {"ok": True}
+            if not wa_payload_is_ours(_probe):
+                logger.error("WA webhook rejected: unverified payload does not match our WABA/phone_number_id")
+                raise HTTPException(status_code=403, detail="Invalid signature")
+            logger.critical(
+                "WA webhook ACCEPTED WITHOUT SIGNATURE VERIFICATION because META_APP_SECRET is wrong. "
+                "FIX IT: %s", secret_state.get("detail"),
+            )
     try:
         payload = json.loads(raw.decode("utf-8"))
     except Exception:
