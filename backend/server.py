@@ -3198,12 +3198,23 @@ async def wa_status(current_user: dict = Depends(get_current_user)):
         "phone_number": None,
         "waba_ids": [],
         "approved_templates": [],
+        "webhook_traffic": dict(WA_WEBHOOK_STATS),
         "errors": [],
         "checks": [],
     }
 
     def _chk(name, ok, detail=""):
         result["checks"].append({"check": name, "ok": bool(ok), "detail": detail})
+
+    # Surface webhook signature failures - the classic "wrong app secret" symptom, which
+    # otherwise silently drops every inbound message and delivery receipt.
+    if WA_WEBHOOK_STATS["signature_fail_count"] > 0 and WA_WEBHOOK_STATS["signature_ok_count"] == 0:
+        _chk("webhook_signature", False,
+             f"{WA_WEBHOOK_STATS['signature_fail_count']} webhook(s) from Meta were REJECTED for "
+             f"signature mismatch. META_APP_SECRET does not match the app that owns this WABA.")
+    elif WA_WEBHOOK_STATS["signature_ok_count"] > 0:
+        _chk("webhook_signature", True,
+             f"{WA_WEBHOOK_STATS['signature_ok_count']} verified webhook(s) received")
 
     _chk("phone_number_id_set", bool(c["phone_number_id"]),
          "Set WHATSAPP_PHONE_NUMBER_ID" if not c["phone_number_id"] else "")
@@ -3335,39 +3346,88 @@ async def wa_webhook_verify(
     logger.warning(f"WA webhook verification FAILED (mode={hub_mode}, supplied_token_len={len(hub_verify_token or '')})")
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
+WA_STATUS_RANK = {"failed": 0, "sent": 1, "delivered": 2, "read": 3}
+
+# Lightweight in-process webhook telemetry, surfaced via GET /api/whatsapp/status
+WA_WEBHOOK_STATS = {
+    "last_received_at": None,
+    "received_count": 0,
+    "signature_ok_count": 0,
+    "signature_fail_count": 0,
+    "last_signature_error_at": None,
+    "processed_messages": 0,
+    "processed_statuses": 0,
+    "last_error": None,
+}
+
+
 @api_router.post("/whatsapp/webhook")
 async def wa_webhook_receive(request: Request):
     import hmac as _hmac, hashlib as _hashlib
     raw = await request.body()
     c = wa_config()
-    # Verify signature if app secret configured
+    now = datetime.now(timezone.utc)
+    WA_WEBHOOK_STATS["received_count"] += 1
+    WA_WEBHOOK_STATS["last_received_at"] = now.isoformat()
+
+    # ---- Signature verification (HMAC-SHA256 of the RAW body with the app secret) ----
+    require_sig = (os.environ.get("WA_REQUIRE_SIGNATURE", "true").strip().lower() != "false")
     if c["app_secret"]:
         supplied = request.headers.get("X-Hub-Signature-256", "")
         expected = "sha256=" + _hmac.new(c["app_secret"].encode(), raw, _hashlib.sha256).hexdigest()
-        if not _hmac.compare_digest(supplied, expected):
-            raise HTTPException(status_code=403, detail="Invalid signature")
+        if _hmac.compare_digest(supplied, expected):
+            WA_WEBHOOK_STATS["signature_ok_count"] += 1
+        else:
+            WA_WEBHOOK_STATS["signature_fail_count"] += 1
+            WA_WEBHOOK_STATS["last_signature_error_at"] = now.isoformat()
+            WA_WEBHOOK_STATS["last_error"] = (
+                "X-Hub-Signature-256 mismatch - META_APP_SECRET is almost certainly wrong "
+                "(it must be the App Secret of the app that owns this WABA, from "
+                "App Dashboard > Settings > Basic > App Secret)."
+            )
+            logger.error(
+                "WA webhook SIGNATURE MISMATCH. supplied=%s expected=%s body_len=%d. "
+                "META_APP_SECRET is likely wrong for this app.",
+                supplied[:25], expected[:25], len(raw),
+            )
+            if require_sig:
+                # 403 makes Meta retry and eventually disable the subscription, so make the
+                # cause unmistakable in the logs and in /api/whatsapp/status.
+                raise HTTPException(status_code=403, detail="Invalid signature")
+            logger.warning("WA_REQUIRE_SIGNATURE=false -> processing UNVERIFIED webhook payload anyway")
     try:
         payload = json.loads(raw.decode("utf-8"))
     except Exception:
         return {"ok": True}
-    now = datetime.now(timezone.utc)
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value", {})
+            # Map wa_id -> WhatsApp profile name so new threads get a real name, not a number
+            profile_names = {}
+            for ct in value.get("contacts", []) or []:
+                nm = ((ct.get("profile") or {}).get("name") or "").strip()
+                if ct.get("wa_id") and nm:
+                    profile_names[_norm_phone(ct.get("wa_id"))] = nm
             for m in value.get("messages", []):
                 wa_id = m.get("from")
                 phone = _norm_phone(wa_id)
                 mtype = m.get("type", "text")
+                display_name = profile_names.get(phone) or phone
                 conv = await mongo_db.brandsxai_wa_conversations.find_one({"lead_phone": phone})
                 if not conv:
                     # create a bare conversation for unknown inbound
                     conv_id = str(uuid.uuid4())
-                    conv = {"id": conv_id, "brand_id": 1, "lead_name": phone, "lead_phone": phone,
+                    conv = {"id": conv_id, "brand_id": 1, "lead_name": display_name, "lead_phone": phone,
                             "stage": "Contacted", "status": "open", "unread_count": 0,
-                            "temperature": "warm", "created_at": now.isoformat(), "updated_at": now.isoformat()}
+                            "temperature": "warm", "source": "inbound_webhook",
+                            "created_at": now.isoformat(), "updated_at": now.isoformat()}
                     await mongo_db.brandsxai_wa_conversations.insert_one(conv)
                 else:
                     conv_id = conv["id"]
+                    # Upgrade a placeholder name (bare phone number) to the real profile name
+                    if display_name != phone and (conv.get("lead_name") or "") in ("", phone):
+                        await mongo_db.brandsxai_wa_conversations.update_one(
+                            {"id": conv_id}, {"$set": {"lead_name": display_name}})
                 existing = await mongo_db.brandsxai_wa_messages.find_one({"wa_message_id": m.get("id")})
                 if existing:
                     continue
@@ -3391,6 +3451,14 @@ async def wa_webhook_receive(request: Request):
                             logger.error(f"WA media download error: {e}")
                     if not content:
                         content = f"[{mtype}]"
+                elif mtype == "reaction":
+                    content = (m.get("reaction") or {}).get("emoji") or "[reaction]"
+                elif mtype == "location":
+                    loc = m.get("location") or {}
+                    content = loc.get("name") or f"[location {loc.get('latitude')},{loc.get('longitude')}]"
+                elif mtype in ("button", "interactive"):
+                    obj = m.get(mtype) or {}
+                    content = obj.get("text") or json.dumps(obj)[:150]
                 else:
                     content = m.get(mtype, {}).get("body", f"[{mtype}]") if isinstance(m.get(mtype), dict) else f"[{mtype}]"
                 await mongo_db.brandsxai_wa_messages.insert_one({
@@ -3399,13 +3467,35 @@ async def wa_webhook_receive(request: Request):
                     "media_url": media_url, "status": "delivered", "wa_message_id": m.get("id"),
                     "simulated": False, "created_at": now.isoformat()
                 })
+                WA_WEBHOOK_STATS["processed_messages"] += 1
+                logger.info(f"WA inbound {mtype} from {phone} -> conversation {conv_id}")
                 preview = (f"[{mtype}]" + (f" {caption}" if caption else "")) if media_url or mtype != "text" else content
                 await _wa_touch_conversation(conv_id, preview, "inbound")
             for status in value.get("statuses", []):
-                await mongo_db.brandsxai_wa_messages.update_one(
-                    {"wa_message_id": status.get("id")},
-                    {"$set": {"status": status.get("status")}}
-                )
+                new_status = status.get("status")
+                wamid = status.get("id")
+                if not wamid or not new_status:
+                    continue
+                doc = await mongo_db.brandsxai_wa_messages.find_one({"wa_message_id": wamid})
+                if not doc:
+                    continue
+                # Meta retries arrive OUT OF ORDER, so never downgrade read -> delivered -> sent
+                cur_rank = WA_STATUS_RANK.get(doc.get("status"), -1)
+                new_rank = WA_STATUS_RANK.get(new_status, -1)
+                set_fields = {f"status_timestamps.{new_status}": status.get("timestamp")}
+                if new_status == "failed":
+                    set_fields["status"] = "failed"
+                    set_fields["error"] = (status.get("errors") or [{}])[0]
+                    logger.error(f"WA message {wamid} FAILED: {status.get('errors')}")
+                elif new_rank > cur_rank:
+                    set_fields["status"] = new_status
+                if status.get("pricing"):
+                    set_fields["pricing"] = status.get("pricing")
+                if status.get("conversation"):
+                    set_fields["wa_conversation"] = status.get("conversation")
+                await mongo_db.brandsxai_wa_messages.update_one({"wa_message_id": wamid}, {"$set": set_fields})
+                WA_WEBHOOK_STATS["processed_statuses"] += 1
+                logger.info(f"WA status {new_status} for {wamid} (was {doc.get('status')})")
     return {"ok": True}
 
 

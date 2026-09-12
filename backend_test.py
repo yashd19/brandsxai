@@ -1,488 +1,1175 @@
 #!/usr/bin/env python3
 """
-WhatsApp AI Read Endpoints Regression Test
-Tests the performance-optimized read endpoints after refactor
+WhatsApp AI Backend Regression Test Suite
+Tests webhook signature diagnostics + out-of-order status ticks bug fixes
 """
+
 import requests
+import json
 import time
-import asyncio
-import httpx
-from statistics import mean
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
 
 # Configuration
-BASE_URL = "https://wa-business-flow.preview.emergentagent.com/api"
+BASE_URL = "https://f11fcb3b-5aba-4b2b-a12a-6a2028a9906c.preview.emergentagent.com"
+API_BASE = f"{BASE_URL}/api"
+
+# Test credentials
 USERNAME = "testuser"
 PASSWORD = "test123"
 
+# Global token storage
+AUTH_TOKEN = None
+
 def login():
-    """Login and get JWT token"""
-    print("🔐 Logging in as testuser/test123...")
+    """Login once and store the token"""
+    global AUTH_TOKEN
+    print("\n=== LOGIN ===")
     response = requests.post(
-        f"{BASE_URL}/auth/login",
+        f"{API_BASE}/auth/login",
         json={"username": USERNAME, "password": PASSWORD}
     )
-    if response.status_code != 200:
-        print(f"❌ Login failed: {response.status_code} - {response.text}")
-        return None
-    
-    data = response.json()
-    token = data.get("access_token") or data.get("token")
-    if not token:
-        print(f"❌ Login failed: No token in response")
-        print(f"Response data: {data}")
-        return None
-    print(f"✅ Login successful, token received")
-    return token
+    print(f"Status: {response.status_code}")
+    if response.status_code == 200:
+        data = response.json()
+        AUTH_TOKEN = data.get("access_token")
+        print(f"✅ Login successful, token obtained")
+        return True
+    else:
+        print(f"❌ Login failed: {response.text}")
+        return False
 
-def test_1_list_conversations(token):
-    """
-    TEST 1: GET /api/whatsapp/conversations
-    - Should return 200
-    - Should have "conversations" array with >= 1 item
-    - Should be sorted by last_message_at desc
-    - Should have "live_mode": false
-    """
+def get_headers(auth=True):
+    """Get headers with optional auth"""
+    headers = {"Content-Type": "application/json"}
+    if auth and AUTH_TOKEN:
+        headers["Authorization"] = f"Bearer {AUTH_TOKEN}"
+    return headers
+
+def test_1_whatsapp_status():
+    """TEST 1: GET /api/whatsapp/status"""
     print("\n" + "="*80)
-    print("TEST 1: GET /api/whatsapp/conversations")
+    print("TEST 1: GET /api/whatsapp/status (auth required)")
     print("="*80)
     
-    headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(f"{BASE_URL}/whatsapp/conversations", headers=headers)
+    # Test with auth
+    response = requests.get(f"{API_BASE}/whatsapp/status", headers=get_headers(auth=True))
+    print(f"Status: {response.status_code}")
     
     if response.status_code != 200:
-        print(f"❌ FAILED: Expected 200, got {response.status_code}")
+        print(f"❌ Expected 200, got {response.status_code}")
         print(f"Response: {response.text}")
-        return None, None
+        return False
     
     data = response.json()
+    print(f"Response keys: {list(data.keys())}")
     
-    # Check for conversations array
-    if "conversations" not in data:
-        print(f"❌ FAILED: Missing 'conversations' key in response")
-        return None, None
+    # Check required fields
+    checks = []
     
-    conversations = data["conversations"]
-    if len(conversations) < 1:
-        print(f"❌ FAILED: Expected at least 1 conversation, got {len(conversations)}")
-        return None, None
-    
-    print(f"✅ Found {len(conversations)} conversations")
-    
-    # Check sorting by last_message_at desc
-    timestamps = [conv.get("last_message_at") for conv in conversations if conv.get("last_message_at")]
-    if len(timestamps) > 1:
-        is_sorted = all(timestamps[i] >= timestamps[i+1] for i in range(len(timestamps)-1))
-        if is_sorted:
-            print(f"✅ Conversations sorted by last_message_at DESC")
-        else:
-            print(f"❌ FAILED: Conversations NOT sorted by last_message_at DESC")
-            print(f"First 5 timestamps: {timestamps[:5]}")
-    
-    # Check live_mode
-    if "live_mode" not in data:
-        print(f"❌ FAILED: Missing 'live_mode' key in response")
-        return None, None
-    
-    if data["live_mode"] != False:
-        print(f"❌ FAILED: Expected live_mode=false, got {data['live_mode']}")
-        return None, None
-    
-    print(f"✅ live_mode: false")
-    
-    # Pick two conversation IDs for next tests
-    conv_ids = [conv["id"] for conv in conversations[:2]]
-    if len(conv_ids) < 2:
-        print(f"⚠️  WARNING: Only {len(conv_ids)} conversation(s) available, need 2 for cross-contamination test")
-        if len(conv_ids) == 1:
-            conv_ids.append(conv_ids[0])  # Use same ID twice if only one available
-    
-    print(f"\n✅ TEST 1 PASSED")
-    print(f"Selected conversation IDs for next tests:")
-    print(f"  A: {conv_ids[0]}")
-    print(f"  B: {conv_ids[1]}")
-    
-    return conv_ids[0], conv_ids[1]
-
-def test_2_get_conversation_no_contamination(token, conv_a, conv_b):
-    """
-    TEST 2: GET /api/whatsapp/conversations/{id}
-    - Test conversation A: should return 200 with conversation, messages, appointments, live_mode
-    - conversation.id should equal A
-    - conversation.unread_count should be 0
-    - All messages should have conversation_id == A
-    - Repeat for B and verify no cross-contamination
-    """
-    print("\n" + "="*80)
-    print("TEST 2: GET /api/whatsapp/conversations/{id} - No Cross-Contamination")
-    print("="*80)
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # Test conversation A
-    print(f"\n📋 Testing conversation A: {conv_a}")
-    response_a = requests.get(f"{BASE_URL}/whatsapp/conversations/{conv_a}", headers=headers)
-    
-    if response_a.status_code != 200:
-        print(f"❌ FAILED: Expected 200 for conversation A, got {response_a.status_code}")
-        print(f"Response: {response_a.text}")
-        return False
-    
-    data_a = response_a.json()
-    
-    # Check required keys
-    required_keys = ["conversation", "messages", "appointments", "live_mode"]
-    for key in required_keys:
-        if key not in data_a:
-            print(f"❌ FAILED: Missing '{key}' in response for conversation A")
-            return False
-    
-    print(f"✅ All required keys present: {required_keys}")
-    
-    # Check conversation.id == A
-    if data_a["conversation"]["id"] != conv_a:
-        print(f"❌ FAILED: conversation.id mismatch for A")
-        print(f"Expected: {conv_a}, Got: {data_a['conversation']['id']}")
-        return False
-    
-    print(f"✅ conversation.id matches: {conv_a}")
-    
-    # Check unread_count == 0
-    if data_a["conversation"]["unread_count"] != 0:
-        print(f"❌ FAILED: Expected unread_count=0, got {data_a['conversation']['unread_count']}")
-        return False
-    
-    print(f"✅ unread_count: 0")
-    
-    # Check all messages belong to conversation A
-    messages_a = data_a["messages"]
-    print(f"✅ Found {len(messages_a)} messages in conversation A")
-    
-    for i, msg in enumerate(messages_a):
-        if msg.get("conversation_id") != conv_a:
-            print(f"❌ FAILED: Message {i} has wrong conversation_id")
-            print(f"Expected: {conv_a}, Got: {msg.get('conversation_id')}")
-            return False
-    
-    print(f"✅ All {len(messages_a)} messages belong to conversation A")
-    
-    # Test conversation B (if different from A)
-    if conv_b != conv_a:
-        print(f"\n📋 Testing conversation B: {conv_b}")
-        response_b = requests.get(f"{BASE_URL}/whatsapp/conversations/{conv_b}", headers=headers)
-        
-        if response_b.status_code != 200:
-            print(f"❌ FAILED: Expected 200 for conversation B, got {response_b.status_code}")
-            print(f"Response: {response_b.text}")
-            return False
-        
-        data_b = response_b.json()
-        
-        # Check conversation.id == B
-        if data_b["conversation"]["id"] != conv_b:
-            print(f"❌ FAILED: conversation.id mismatch for B")
-            print(f"Expected: {conv_b}, Got: {data_b['conversation']['id']}")
-            return False
-        
-        print(f"✅ conversation.id matches: {conv_b}")
-        
-        # Check all messages belong to conversation B
-        messages_b = data_b["messages"]
-        print(f"✅ Found {len(messages_b)} messages in conversation B")
-        
-        for i, msg in enumerate(messages_b):
-            if msg.get("conversation_id") != conv_b:
-                print(f"❌ FAILED: Message {i} has wrong conversation_id")
-                print(f"Expected: {conv_b}, Got: {msg.get('conversation_id')}")
-                return False
-        
-        print(f"✅ All {len(messages_b)} messages belong to conversation B")
-        
-        # Verify no cross-contamination
-        print(f"\n🔍 Verifying no cross-contamination...")
-        print(f"Conversation A has {len(messages_a)} messages, all with conversation_id={conv_a}")
-        print(f"Conversation B has {len(messages_b)} messages, all with conversation_id={conv_b}")
-        print(f"✅ No cross-contamination detected")
+    # Basic status
+    if data.get("token_valid") == True:
+        print("✅ token_valid == true")
+        checks.append(True)
     else:
-        print(f"\n⚠️  Skipping conversation B test (same as A)")
+        print(f"❌ token_valid: expected true, got {data.get('token_valid')}")
+        checks.append(False)
     
-    print(f"\n✅ TEST 2 PASSED")
-    return True
-
-def test_3_response_time_5_calls(token, conv_id):
-    """
-    TEST 3: Measure response time over 5 sequential calls
-    - Should report average latency in ms
-    - Should be well under 1 second each
-    """
-    print("\n" + "="*80)
-    print("TEST 3: Response Time - 5 Sequential Calls")
-    print("="*80)
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    latencies = []
-    
-    print(f"\n📊 Measuring response time for conversation {conv_id}...")
-    
-    for i in range(5):
-        start = time.time()
-        response = requests.get(f"{BASE_URL}/whatsapp/conversations/{conv_id}", headers=headers)
-        end = time.time()
-        
-        latency_ms = (end - start) * 1000
-        latencies.append(latency_ms)
-        
-        if response.status_code != 200:
-            print(f"❌ FAILED: Call {i+1} returned {response.status_code}")
-            return False
-        
-        print(f"  Call {i+1}: {latency_ms:.2f} ms")
-    
-    avg_latency = mean(latencies)
-    min_latency = min(latencies)
-    max_latency = max(latencies)
-    
-    print(f"\n📈 Latency Statistics:")
-    print(f"  Average: {avg_latency:.2f} ms")
-    print(f"  Min: {min_latency:.2f} ms")
-    print(f"  Max: {max_latency:.2f} ms")
-    
-    if avg_latency < 1000:
-        print(f"✅ Average latency well under 1 second")
+    if data.get("ready_to_send") == True:
+        print("✅ ready_to_send == true")
+        checks.append(True)
     else:
-        print(f"⚠️  WARNING: Average latency >= 1 second")
+        print(f"❌ ready_to_send: expected true, got {data.get('ready_to_send')}")
+        checks.append(False)
     
-    print(f"\n✅ TEST 3 PASSED")
-    return True
+    if data.get("live_mode") == True:
+        print("✅ live_mode == true")
+        checks.append(True)
+    else:
+        print(f"❌ live_mode: expected true, got {data.get('live_mode')}")
+        checks.append(False)
+    
+    # Phone number info
+    phone_number = data.get("phone_number", {})
+    if phone_number.get("verified_name") == "Swad Mania":
+        print(f"✅ verified_name == 'Swad Mania'")
+        checks.append(True)
+    else:
+        print(f"❌ verified_name: expected 'Swad Mania', got {phone_number.get('verified_name')}")
+        checks.append(False)
+    
+    if phone_number.get("display_phone_number"):
+        print(f"✅ display_phone_number present: {phone_number.get('display_phone_number')}")
+        checks.append(True)
+    else:
+        print(f"❌ display_phone_number missing")
+        checks.append(False)
+    
+    # Token info
+    token_info = data.get("token_info", {})
+    if token_info.get("never_expires") == True:
+        print(f"✅ token_info.never_expires == true")
+        checks.append(True)
+    else:
+        print(f"❌ token_info.never_expires: expected true, got {token_info.get('never_expires')}")
+        checks.append(False)
+    
+    if token_info.get("type") == "SYSTEM_USER":
+        print(f"✅ token_info.type == 'SYSTEM_USER'")
+        checks.append(True)
+    else:
+        print(f"❌ token_info.type: expected 'SYSTEM_USER', got {token_info.get('type')}")
+        checks.append(False)
+    
+    # WABA IDs
+    waba_ids = data.get("waba_ids", [])
+    if "971659015904015" in waba_ids:
+        print(f"✅ waba_ids contains '971659015904015'")
+        checks.append(True)
+    else:
+        print(f"❌ waba_ids missing '971659015904015': {waba_ids}")
+        checks.append(False)
+    
+    # Approved templates
+    approved_templates = data.get("approved_templates", [])
+    if len(approved_templates) >= 14:
+        print(f"✅ approved_templates contains {len(approved_templates)} entries (>= 14)")
+        checks.append(True)
+    else:
+        print(f"❌ approved_templates: expected >= 14, got {len(approved_templates)}")
+        checks.append(False)
+    
+    # Check all templates are APPROVED
+    all_approved = all(t.get("status") == "APPROVED" for t in approved_templates)
+    if all_approved:
+        print(f"✅ All templates have status APPROVED")
+        checks.append(True)
+    else:
+        print(f"❌ Not all templates are APPROVED")
+        checks.append(False)
+    
+    # Check for specific templates
+    template_names = [t.get("name") for t in approved_templates]
+    if "hello_world" in template_names:
+        print(f"✅ 'hello_world' template present")
+        checks.append(True)
+    else:
+        print(f"❌ 'hello_world' template missing")
+        checks.append(False)
+    
+    if "tenant_welcome" in template_names:
+        print(f"✅ 'tenant_welcome' template present")
+        checks.append(True)
+    else:
+        print(f"❌ 'tenant_welcome' template missing")
+        checks.append(False)
+    
+    # Check all templates have language en_US
+    all_en_us = all(t.get("language") == "en_US" for t in approved_templates)
+    if all_en_us:
+        print(f"✅ All templates have language 'en_US'")
+        checks.append(True)
+    else:
+        non_en_us = [t for t in approved_templates if t.get("language") != "en_US"]
+        print(f"❌ Some templates don't have 'en_US': {[(t.get('name'), t.get('language')) for t in non_en_us]}")
+        checks.append(False)
+    
+    # Webhook traffic
+    webhook_traffic = data.get("webhook_traffic")
+    if webhook_traffic and isinstance(webhook_traffic, dict):
+        print(f"✅ webhook_traffic object present")
+        required_keys = ["received_count", "signature_ok_count", "signature_fail_count", "processed_messages", "processed_statuses"]
+        for key in required_keys:
+            if key in webhook_traffic and isinstance(webhook_traffic[key], int):
+                print(f"  ✅ {key}: {webhook_traffic[key]}")
+            else:
+                print(f"  ❌ {key} missing or not an integer")
+                checks.append(False)
+        checks.append(True)
+    else:
+        print(f"❌ webhook_traffic missing or not a dict")
+        checks.append(False)
+    
+    # Webhook signature check
+    checks_array = data.get("checks", [])
+    webhook_sig_check = next((c for c in checks_array if c.get("check") == "webhook_signature"), None)
+    if webhook_sig_check:
+        print(f"✅ 'webhook_signature' check found in checks array")
+        print(f"  ok: {webhook_sig_check.get('ok')}")
+        print(f"  detail: {webhook_sig_check.get('detail')}")
+        checks.append(True)
+    else:
+        print(f"❌ 'webhook_signature' check not found in checks array")
+        checks.append(False)
+    
+    # Test without auth (should be 403)
+    print("\n--- Testing without Authorization header ---")
+    response_no_auth = requests.get(f"{API_BASE}/whatsapp/status")
+    if response_no_auth.status_code == 403:
+        print(f"✅ Returns 403 when called without Authorization header")
+        checks.append(True)
+    else:
+        print(f"❌ Expected 403 without auth, got {response_no_auth.status_code}")
+        checks.append(False)
+    
+    success = all(checks)
+    print(f"\n{'✅ TEST 1 PASSED' if success else '❌ TEST 1 FAILED'} ({sum(checks)}/{len(checks)} checks)")
+    return success
 
-def test_4_messages_after_filter(token, conv_id):
-    """
-    TEST 4: GET /api/whatsapp/conversations/{id}/messages?after=<timestamp>
-    - Get all messages first
-    - Use created_at of FIRST message
-    - Query with after parameter
-    - Should return only messages with created_at > that timestamp
-    """
+def test_2_template_sync():
+    """TEST 2: POST /api/whatsapp/templates/sync"""
     print("\n" + "="*80)
-    print("TEST 4: Messages After Filter")
+    print("TEST 2: POST /api/whatsapp/templates/sync (auth required)")
     print("="*80)
     
-    headers = {"Authorization": f"Bearer {token}"}
+    checks = []
     
-    # First, get the conversation to get all messages
-    print(f"\n📋 Getting all messages for conversation {conv_id}...")
-    response = requests.get(f"{BASE_URL}/whatsapp/conversations/{conv_id}", headers=headers)
+    # Sync templates
+    response = requests.post(f"{API_BASE}/whatsapp/templates/sync", headers=get_headers(auth=True))
+    print(f"Status: {response.status_code}")
     
     if response.status_code != 200:
-        print(f"❌ FAILED: Could not get conversation, status {response.status_code}")
+        print(f"❌ Expected 200, got {response.status_code}")
+        print(f"Response: {response.text}")
         return False
     
     data = response.json()
-    all_messages = data["messages"]
+    print(f"Response: {json.dumps(data, indent=2)}")
     
-    if len(all_messages) < 2:
-        print(f"⚠️  WARNING: Only {len(all_messages)} message(s) in conversation, need at least 2 for filter test")
-        if len(all_messages) == 0:
-            print(f"❌ FAILED: No messages to test with")
-            return False
+    if data.get("synced_count") == 14:
+        print(f"✅ synced_count == 14")
+        checks.append(True)
+    else:
+        print(f"❌ synced_count: expected 14, got {data.get('synced_count')}")
+        checks.append(False)
     
-    print(f"✅ Found {len(all_messages)} total messages")
+    if data.get("skipped_not_approved") == 0:
+        print(f"✅ skipped_not_approved == 0")
+        checks.append(True)
+    else:
+        print(f"❌ skipped_not_approved: expected 0, got {data.get('skipped_not_approved')}")
+        checks.append(False)
     
-    # Get the created_at of the FIRST message
-    first_message_timestamp = all_messages[0]["created_at"]
-    print(f"📅 First message timestamp: {first_message_timestamp}")
+    if data.get("waba_id") == "971659015904015":
+        print(f"✅ waba_id == '971659015904015'")
+        checks.append(True)
+    else:
+        print(f"❌ waba_id: expected '971659015904015', got {data.get('waba_id')}")
+        checks.append(False)
     
-    # Query with after parameter
-    print(f"\n🔍 Querying messages after {first_message_timestamp}...")
-    response = requests.get(
-        f"{BASE_URL}/whatsapp/conversations/{conv_id}/messages",
-        headers=headers,
-        params={"after": first_message_timestamp}
+    # Get templates
+    print("\n--- GET /api/whatsapp/templates ---")
+    response = requests.get(f"{API_BASE}/whatsapp/templates", headers=get_headers(auth=True))
+    print(f"Status: {response.status_code}")
+    
+    if response.status_code != 200:
+        print(f"❌ Expected 200, got {response.status_code}")
+        return False
+    
+    data = response.json()
+    
+    if data.get("source") == "meta":
+        print(f"✅ source == 'meta'")
+        checks.append(True)
+    else:
+        print(f"❌ source: expected 'meta', got {data.get('source')}")
+        checks.append(False)
+    
+    if data.get("live_mode") == True:
+        print(f"✅ live_mode == true")
+        checks.append(True)
+    else:
+        print(f"❌ live_mode: expected true, got {data.get('live_mode')}")
+        checks.append(False)
+    
+    templates = data.get("templates", [])
+    if len(templates) == 14:
+        print(f"✅ 14 templates returned")
+        checks.append(True)
+    else:
+        print(f"❌ Expected 14 templates, got {len(templates)}")
+        checks.append(False)
+    
+    # Check all templates have language en_US (NOT en)
+    all_en_us = all(t.get("language") == "en_US" for t in templates)
+    if all_en_us:
+        print(f"✅ All templates have language 'en_US' (NOT 'en')")
+        checks.append(True)
+    else:
+        non_en_us = [t for t in templates if t.get("language") != "en_US"]
+        print(f"❌ Some templates don't have 'en_US': {[(t.get('name'), t.get('language')) for t in non_en_us]}")
+        checks.append(False)
+    
+    # Check hello_world
+    hello_world = next((t for t in templates if t.get("name") == "hello_world"), None)
+    if hello_world:
+        print(f"✅ 'hello_world' template found")
+        if hello_world.get("variable_count") == 0:
+            print(f"  ✅ variable_count == 0")
+            checks.append(True)
+        else:
+            print(f"  ❌ variable_count: expected 0, got {hello_world.get('variable_count')}")
+            checks.append(False)
+        
+        if hello_world.get("variables") == []:
+            print(f"  ✅ variables == []")
+            checks.append(True)
+        else:
+            print(f"  ❌ variables: expected [], got {hello_world.get('variables')}")
+            checks.append(False)
+    else:
+        print(f"❌ 'hello_world' template not found")
+        checks.append(False)
+    
+    # Check tenant_welcome
+    tenant_welcome = next((t for t in templates if t.get("name") == "tenant_welcome"), None)
+    if tenant_welcome:
+        print(f"✅ 'tenant_welcome' template found")
+        if tenant_welcome.get("variable_count") == 2:
+            print(f"  ✅ variable_count == 2")
+            checks.append(True)
+        else:
+            print(f"  ❌ variable_count: expected 2, got {tenant_welcome.get('variable_count')}")
+            checks.append(False)
+        
+        variables = tenant_welcome.get("variables", [])
+        print(f"  Variables: {variables}")
+        # Check that variables are human readable with example hints
+        if len(variables) == 2:
+            # Should look like ["Variable 1 (e.g. Krish)", "Variable 2 (e.g. 38 Stagg Street)"]
+            has_examples = all("e.g." in str(v) for v in variables)
+            if has_examples:
+                print(f"  ✅ Variables contain example hints (e.g.)")
+                checks.append(True)
+            else:
+                print(f"  ❌ Variables don't contain example hints")
+                checks.append(False)
+        else:
+            print(f"  ❌ Expected 2 variables, got {len(variables)}")
+            checks.append(False)
+    else:
+        print(f"❌ 'tenant_welcome' template not found")
+        checks.append(False)
+    
+    # Check maintenance_visit_scheduled
+    maintenance = next((t for t in templates if t.get("name") == "maintenance_visit_scheduled"), None)
+    if maintenance:
+        print(f"✅ 'maintenance_visit_scheduled' template found")
+        if maintenance.get("variable_count") == 4:
+            print(f"  ✅ variable_count == 4")
+            checks.append(True)
+        else:
+            print(f"  ❌ variable_count: expected 4, got {maintenance.get('variable_count')}")
+            checks.append(False)
+    else:
+        print(f"❌ 'maintenance_visit_scheduled' template not found")
+        checks.append(False)
+    
+    # Test idempotency - sync again
+    print("\n--- Testing idempotency (sync again) ---")
+    response = requests.post(f"{API_BASE}/whatsapp/templates/sync", headers=get_headers(auth=True))
+    print(f"Status: {response.status_code}")
+    
+    if response.status_code == 200:
+        # Get templates again
+        response = requests.get(f"{API_BASE}/whatsapp/templates", headers=get_headers(auth=True))
+        data = response.json()
+        templates = data.get("templates", [])
+        if len(templates) == 14:
+            print(f"✅ Still 14 templates after second sync (no duplicates)")
+            checks.append(True)
+        else:
+            print(f"❌ Expected 14 templates after second sync, got {len(templates)}")
+            checks.append(False)
+    else:
+        print(f"❌ Second sync failed: {response.status_code}")
+        checks.append(False)
+    
+    success = all(checks)
+    print(f"\n{'✅ TEST 2 PASSED' if success else '❌ TEST 2 FAILED'} ({sum(checks)}/{len(checks)} checks)")
+    return success
+
+def test_3_inbound_message_webhook():
+    """TEST 3: Inbound message via POST /api/whatsapp/webhook"""
+    print("\n" + "="*80)
+    print("TEST 3: Inbound message via POST /api/whatsapp/webhook (public, no auth)")
+    print("="*80)
+    
+    checks = []
+    
+    # Create a unique wamid with timestamp
+    timestamp = int(time.time() * 1000)
+    wamid = f"wamid.TEST_INBOUND_{timestamp}"
+    fake_phone = "919000000001"
+    
+    # Craft realistic Meta payload
+    payload = {
+        "object": "whatsapp_business_account",
+        "entry": [{
+            "id": "971659015904015",
+            "changes": [{
+                "value": {
+                    "messaging_product": "whatsapp",
+                    "metadata": {
+                        "display_phone_number": "15515506716",
+                        "phone_number_id": "1236101482916191"
+                    },
+                    "contacts": [{
+                        "profile": {
+                            "name": "Test Customer"
+                        },
+                        "wa_id": fake_phone
+                    }],
+                    "messages": [{
+                        "from": fake_phone,
+                        "id": wamid,
+                        "timestamp": str(int(time.time())),
+                        "type": "text",
+                        "text": {
+                            "body": "Hello, I'm interested in your products"
+                        }
+                    }]
+                },
+                "field": "messages"
+            }]
+        }]
+    }
+    
+    print(f"Sending webhook with wamid: {wamid}")
+    print(f"Fake phone: {fake_phone}")
+    print(f"Profile name: Test Customer")
+    
+    # Send webhook WITHOUT X-Hub-Signature-256 header
+    response = requests.post(
+        f"{API_BASE}/whatsapp/webhook",
+        json=payload,
+        headers={"Content-Type": "application/json"}
     )
     
+    print(f"Status: {response.status_code}")
+    print(f"Response: {response.text}")
+    
+    if response.status_code == 200:
+        data = response.json()
+        if data.get("ok") == True:
+            print(f"✅ Webhook accepted (200 with ok: true)")
+            checks.append(True)
+        else:
+            print(f"❌ Expected ok: true, got {data}")
+            checks.append(False)
+    else:
+        print(f"❌ Expected 200, got {response.status_code}")
+        checks.append(False)
+    
+    # Wait a moment for processing
+    time.sleep(1)
+    
+    # Get conversations
+    print("\n--- GET /api/whatsapp/conversations ---")
+    response = requests.get(f"{API_BASE}/whatsapp/conversations", headers=get_headers(auth=True))
+    print(f"Status: {response.status_code}")
+    
     if response.status_code != 200:
-        print(f"❌ FAILED: Query with after parameter returned {response.status_code}")
-        print(f"Response: {response.text}")
-        return False
+        print(f"❌ Expected 200, got {response.status_code}")
+        return False, None, None
     
-    filtered_data = response.json()
-    filtered_messages = filtered_data["messages"]
+    data = response.json()
+    conversations = data.get("conversations", [])
+    print(f"Total conversations: {len(conversations)}")
     
-    print(f"✅ Received {len(filtered_messages)} messages after filter")
+    # Find the conversation for our fake phone
+    thread = None
+    for conv in conversations:
+        if conv.get("lead_phone") == fake_phone or conv.get("lead_phone") == f"91{fake_phone}":
+            thread = conv
+            break
     
-    # Verify all returned messages have created_at > first_message_timestamp
-    for i, msg in enumerate(filtered_messages):
-        if msg["created_at"] <= first_message_timestamp:
-            print(f"❌ FAILED: Message {i} has created_at <= filter timestamp")
-            print(f"Filter: {first_message_timestamp}, Message: {msg['created_at']}")
-            return False
-    
-    print(f"✅ All {len(filtered_messages)} messages have created_at > {first_message_timestamp}")
-    
-    # Expected count should be total - 1 (excluding the first message)
-    expected_count = len(all_messages) - 1
-    if len(filtered_messages) == expected_count:
-        print(f"✅ Correct count: {len(filtered_messages)} (total {len(all_messages)} - 1)")
+    if thread:
+        print(f"✅ Thread exists for lead_phone '{fake_phone}'")
+        print(f"  Conversation ID: {thread.get('id')}")
+        checks.append(True)
+        
+        # CRITICAL: Check lead_name is "Test Customer", NOT the phone number
+        lead_name = thread.get("lead_name")
+        if lead_name == "Test Customer":
+            print(f"✅ CRITICAL: lead_name == 'Test Customer' (WhatsApp profile name, NOT phone number)")
+            checks.append(True)
+        else:
+            print(f"❌ CRITICAL: lead_name should be 'Test Customer', got '{lead_name}'")
+            checks.append(False)
+        
+        # Check unread_count
+        unread_count = thread.get("unread_count", 0)
+        if unread_count >= 1:
+            print(f"✅ unread_count >= 1 ({unread_count})")
+            checks.append(True)
+        else:
+            print(f"❌ unread_count should be >= 1, got {unread_count}")
+            checks.append(False)
+        
+        # Check window_expires_at
+        window_expires_at = thread.get("window_expires_at")
+        if window_expires_at:
+            print(f"✅ window_expires_at set: {window_expires_at}")
+            # Should be roughly 24h in the future
+            checks.append(True)
+        else:
+            print(f"❌ window_expires_at not set")
+            checks.append(False)
+        
+        # Get conversation details
+        print(f"\n--- GET /api/whatsapp/conversations/{thread.get('id')} ---")
+        response = requests.get(
+            f"{API_BASE}/whatsapp/conversations/{thread.get('id')}",
+            headers=get_headers(auth=True)
+        )
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            conv_data = response.json()
+            messages = conv_data.get("messages", [])
+            print(f"Messages count: {len(messages)}")
+            
+            # Find the inbound message
+            inbound_msg = None
+            for msg in messages:
+                if msg.get("wa_message_id") == wamid:
+                    inbound_msg = msg
+                    break
+            
+            if inbound_msg:
+                print(f"✅ Inbound message found")
+                
+                if inbound_msg.get("direction") == "inbound":
+                    print(f"  ✅ direction == 'inbound'")
+                    checks.append(True)
+                else:
+                    print(f"  ❌ direction: expected 'inbound', got {inbound_msg.get('direction')}")
+                    checks.append(False)
+                
+                if inbound_msg.get("sender_type") == "customer":
+                    print(f"  ✅ sender_type == 'customer'")
+                    checks.append(True)
+                else:
+                    print(f"  ❌ sender_type: expected 'customer', got {inbound_msg.get('sender_type')}")
+                    checks.append(False)
+                
+                if "interested in your products" in inbound_msg.get("content", ""):
+                    print(f"  ✅ Correct text content")
+                    checks.append(True)
+                else:
+                    print(f"  ❌ Wrong content: {inbound_msg.get('content')}")
+                    checks.append(False)
+                
+                if inbound_msg.get("simulated") == False:
+                    print(f"  ✅ simulated == false")
+                    checks.append(True)
+                else:
+                    print(f"  ❌ simulated: expected false, got {inbound_msg.get('simulated')}")
+                    checks.append(False)
+            else:
+                print(f"❌ Inbound message not found")
+                checks.append(False)
+        else:
+            print(f"❌ Failed to get conversation details")
+            checks.append(False)
+        
+        # Test idempotency - send same payload again
+        print("\n--- Testing idempotency (same wamid) ---")
+        response = requests.post(
+            f"{API_BASE}/whatsapp/webhook",
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            time.sleep(1)
+            # Get conversation again
+            response = requests.get(
+                f"{API_BASE}/whatsapp/conversations/{thread.get('id')}",
+                headers=get_headers(auth=True)
+            )
+            if response.status_code == 200:
+                conv_data = response.json()
+                messages = conv_data.get("messages", [])
+                # Count messages with our wamid
+                count = sum(1 for msg in messages if msg.get("wa_message_id") == wamid)
+                if count == 1:
+                    print(f"✅ Message NOT duplicated (count == 1)")
+                    checks.append(True)
+                else:
+                    print(f"❌ Message duplicated (count == {count})")
+                    checks.append(False)
+            else:
+                print(f"❌ Failed to get conversation for idempotency check")
+                checks.append(False)
+        else:
+            print(f"❌ Second webhook failed: {response.status_code}")
+            checks.append(False)
     else:
-        print(f"⚠️  WARNING: Expected {expected_count} messages, got {len(filtered_messages)}")
+        print(f"❌ Thread not found for phone {fake_phone}")
+        checks.append(False)
     
-    print(f"\n✅ TEST 4 PASSED")
-    return True
+    success = all(checks)
+    print(f"\n{'✅ TEST 3 PASSED' if success else '❌ TEST 3 FAILED'} ({sum(checks)}/{len(checks)} checks)")
+    return success, wamid if thread else None, thread.get('id') if thread else None
 
-def test_5_conversation_not_found(token):
-    """
-    TEST 5: GET /api/whatsapp/conversations/does-not-exist
-    - Should return 404
-    """
+def test_4_out_of_order_status_ticks(wamid, conversation_id):
+    """TEST 4: Out-of-order delivery ticks - MOST IMPORTANT"""
     print("\n" + "="*80)
-    print("TEST 5: Conversation Not Found (404)")
+    print("TEST 4: Out-of-order delivery ticks (MOST IMPORTANT REGRESSION)")
     print("="*80)
     
-    headers = {"Authorization": f"Bearer {token}"}
-    fake_id = "does-not-exist-12345"
-    
-    print(f"\n🔍 Requesting non-existent conversation: {fake_id}")
-    response = requests.get(f"{BASE_URL}/whatsapp/conversations/{fake_id}", headers=headers)
-    
-    if response.status_code == 404:
-        print(f"✅ Correctly returned 404 for non-existent conversation")
-        print(f"Response: {response.json()}")
-        print(f"\n✅ TEST 5 PASSED")
-        return True
-    else:
-        print(f"❌ FAILED: Expected 404, got {response.status_code}")
-        print(f"Response: {response.text}")
+    if not wamid or not conversation_id:
+        print("❌ No wamid or conversation_id from test 3, skipping")
         return False
-
-def test_6_concurrency_smoke(token, conv_id):
-    """
-    TEST 6: Concurrency Smoke Test
-    - Fire 20 concurrent GET requests to /api/whatsapp/conversations/{id}
-    - All should return 200
-    - Report max latency
-    """
-    print("\n" + "="*80)
-    print("TEST 6: Concurrency Smoke Test (20 concurrent requests)")
-    print("="*80)
     
-    headers = {"Authorization": f"Bearer {token}"}
-    num_requests = 20
+    checks = []
+    fake_phone = "919000000001"
     
-    print(f"\n🚀 Firing {num_requests} concurrent requests to conversation {conv_id}...")
+    print(f"Using wamid: {wamid}")
+    print(f"Conversation ID: {conversation_id}")
     
-    def make_request(request_num):
-        start = time.time()
-        response = requests.get(f"{BASE_URL}/whatsapp/conversations/{conv_id}", headers=headers)
-        end = time.time()
-        latency_ms = (end - start) * 1000
-        return {
-            "request_num": request_num,
-            "status_code": response.status_code,
-            "latency_ms": latency_ms,
-            "success": response.status_code == 200
+    def send_status_webhook(status, error=None):
+        """Helper to send status webhook"""
+        timestamp_val = str(int(time.time()))
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "id": "971659015904015",
+                "changes": [{
+                    "value": {
+                        "messaging_product": "whatsapp",
+                        "metadata": {
+                            "display_phone_number": "15515506716",
+                            "phone_number_id": "1236101482916191"
+                        },
+                        "statuses": [{
+                            "id": wamid,
+                            "status": status,
+                            "timestamp": timestamp_val,
+                            "recipient_id": fake_phone
+                        }]
+                    },
+                    "field": "messages"
+                }]
+            }]
         }
-    
-    # Use ThreadPoolExecutor for concurrent requests
-    start_time = time.time()
-    results = []
-    
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(make_request, i+1) for i in range(num_requests)]
-        for future in as_completed(futures):
-            results.append(future.result())
-    
-    end_time = time.time()
-    total_time = (end_time - start_time) * 1000
-    
-    # Analyze results
-    successful = [r for r in results if r["success"]]
-    failed = [r for r in results if not r["success"]]
-    
-    latencies = [r["latency_ms"] for r in successful]
-    
-    print(f"\n📊 Results:")
-    print(f"  Total time: {total_time:.2f} ms")
-    print(f"  Successful: {len(successful)}/{num_requests}")
-    print(f"  Failed: {len(failed)}/{num_requests}")
-    
-    if failed:
-        print(f"\n❌ Failed requests:")
-        for r in failed:
-            print(f"  Request {r['request_num']}: {r['status_code']}")
-    
-    if latencies:
-        avg_latency = mean(latencies)
-        min_latency = min(latencies)
-        max_latency = max(latencies)
         
-        print(f"\n📈 Latency Statistics (successful requests):")
-        print(f"  Average: {avg_latency:.2f} ms")
-        print(f"  Min: {min_latency:.2f} ms")
-        print(f"  Max: {max_latency:.2f} ms")
+        if error:
+            payload["entry"][0]["changes"][0]["value"]["statuses"][0]["errors"] = [error]
         
-        print(f"\n✅ Max latency: {max_latency:.2f} ms")
+        response = requests.post(
+            f"{API_BASE}/whatsapp/webhook",
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        return response
     
-    if len(successful) == num_requests:
-        print(f"\n✅ TEST 6 PASSED - All {num_requests} requests returned 200")
-        return True
+    def get_message_status():
+        """Helper to get current message status"""
+        response = requests.get(
+            f"{API_BASE}/whatsapp/conversations/{conversation_id}",
+            headers=get_headers(auth=True)
+        )
+        if response.status_code == 200:
+            conv_data = response.json()
+            messages = conv_data.get("messages", [])
+            for msg in messages:
+                if msg.get("wa_message_id") == wamid:
+                    return msg.get("status"), msg.get("status_timestamps", {}), msg.get("error")
+        return None, {}, None
+    
+    # a) Send "read" status
+    print("\n--- Step a) Send 'read' status ---")
+    response = send_status_webhook("read")
+    print(f"Webhook status: {response.status_code}")
+    time.sleep(1)
+    
+    status, timestamps, error = get_message_status()
+    print(f"Current status: {status}")
+    print(f"Status timestamps: {timestamps}")
+    
+    if status == "read":
+        print(f"✅ Status became 'read'")
+        checks.append(True)
     else:
-        print(f"\n❌ TEST 6 FAILED - {len(failed)} requests failed")
+        print(f"❌ Status should be 'read', got '{status}'")
+        checks.append(False)
+    
+    if "read" in timestamps:
+        print(f"✅ status_timestamps.read present")
+        checks.append(True)
+    else:
+        print(f"❌ status_timestamps.read missing")
+        checks.append(False)
+    
+    # b) Send "delivered" status (should NOT downgrade from "read")
+    print("\n--- Step b) Send 'delivered' status (should NOT downgrade) ---")
+    response = send_status_webhook("delivered")
+    print(f"Webhook status: {response.status_code}")
+    time.sleep(1)
+    
+    status, timestamps, error = get_message_status()
+    print(f"Current status: {status}")
+    print(f"Status timestamps: {timestamps}")
+    
+    if status == "read":
+        print(f"✅ CRITICAL: Status REMAINED 'read' (did NOT downgrade to 'delivered')")
+        checks.append(True)
+    else:
+        print(f"❌ CRITICAL: Status downgraded to '{status}' (should remain 'read')")
+        checks.append(False)
+    
+    if "delivered" in timestamps:
+        print(f"✅ status_timestamps.delivered accumulated")
+        checks.append(True)
+    else:
+        print(f"❌ status_timestamps.delivered missing")
+        checks.append(False)
+    
+    # c) Send "sent" status (should NOT downgrade from "read")
+    print("\n--- Step c) Send 'sent' status (should NOT downgrade) ---")
+    response = send_status_webhook("sent")
+    print(f"Webhook status: {response.status_code}")
+    time.sleep(1)
+    
+    status, timestamps, error = get_message_status()
+    print(f"Current status: {status}")
+    print(f"Status timestamps: {timestamps}")
+    
+    if status == "read":
+        print(f"✅ CRITICAL: Status REMAINED 'read' (did NOT downgrade to 'sent')")
+        checks.append(True)
+    else:
+        print(f"❌ CRITICAL: Status downgraded to '{status}' (should remain 'read')")
+        checks.append(False)
+    
+    if "sent" in timestamps:
+        print(f"✅ status_timestamps.sent accumulated")
+        checks.append(True)
+    else:
+        print(f"❌ status_timestamps.sent missing")
+        checks.append(False)
+    
+    # d) Send "failed" status (should ALWAYS apply)
+    print("\n--- Step d) Send 'failed' status (should ALWAYS apply) ---")
+    error_obj = {
+        "code": 131026,
+        "title": "Message Undeliverable",
+        "message": "Message failed to send"
+    }
+    response = send_status_webhook("failed", error_obj)
+    print(f"Webhook status: {response.status_code}")
+    time.sleep(1)
+    
+    status, timestamps, error = get_message_status()
+    print(f"Current status: {status}")
+    print(f"Status timestamps: {timestamps}")
+    print(f"Error: {error}")
+    
+    if status == "failed":
+        print(f"✅ CRITICAL: Status became 'failed' (failed ALWAYS applies)")
+        checks.append(True)
+    else:
+        print(f"❌ CRITICAL: Status should be 'failed', got '{status}'")
+        checks.append(False)
+    
+    if error:
+        print(f"✅ Error field present in message")
+        checks.append(True)
+    else:
+        print(f"❌ Error field missing")
+        checks.append(False)
+    
+    # Verify all status timestamps are present
+    print("\n--- Final status_timestamps check ---")
+    print(f"Status timestamps: {timestamps}")
+    expected_keys = ["read", "delivered", "sent"]
+    for key in expected_keys:
+        if key in timestamps:
+            print(f"✅ status_timestamps.{key} present")
+        else:
+            print(f"❌ status_timestamps.{key} missing")
+            checks.append(False)
+    
+    success = all(checks)
+    print(f"\n{'✅ TEST 4 PASSED' if success else '❌ TEST 4 FAILED'} ({sum(checks)}/{len(checks)} checks)")
+    return success
+
+def test_5_webhook_get_verification():
+    """TEST 5: Webhook GET verification"""
+    print("\n" + "="*80)
+    print("TEST 5: Webhook GET verification (public)")
+    print("="*80)
+    
+    checks = []
+    
+    # Test with first verify token
+    print("\n--- Test with hub.verify_token=brandsxai_wa_verify_7bK9mQ2xP4 ---")
+    response = requests.get(
+        f"{API_BASE}/whatsapp/webhook",
+        params={
+            "hub.mode": "subscribe",
+            "hub.challenge": "TESTCHAL123",
+            "hub.verify_token": "brandsxai_wa_verify_7bK9mQ2xP4"
+        }
+    )
+    print(f"Status: {response.status_code}")
+    print(f"Response: {response.text}")
+    
+    if response.status_code == 200 and response.text == "TESTCHAL123":
+        print(f"✅ Returns 200 with body 'TESTCHAL123'")
+        checks.append(True)
+    else:
+        print(f"❌ Expected 200 with 'TESTCHAL123', got {response.status_code}: {response.text}")
+        checks.append(False)
+    
+    # Test with second verify token
+    print("\n--- Test with hub.verify_token=asdfghjkl1234567890 ---")
+    response = requests.get(
+        f"{API_BASE}/whatsapp/webhook",
+        params={
+            "hub.mode": "subscribe",
+            "hub.challenge": "TESTCHAL123",
+            "hub.verify_token": "asdfghjkl1234567890"
+        }
+    )
+    print(f"Status: {response.status_code}")
+    print(f"Response: {response.text}")
+    
+    if response.status_code == 200 and response.text == "TESTCHAL123":
+        print(f"✅ Returns 200 with body 'TESTCHAL123' (both tokens accepted)")
+        checks.append(True)
+    else:
+        print(f"❌ Expected 200 with 'TESTCHAL123', got {response.status_code}: {response.text}")
+        checks.append(False)
+    
+    # Test with wrong verify token
+    print("\n--- Test with hub.verify_token=definitely_wrong ---")
+    response = requests.get(
+        f"{API_BASE}/whatsapp/webhook",
+        params={
+            "hub.mode": "subscribe",
+            "hub.challenge": "TESTCHAL123",
+            "hub.verify_token": "definitely_wrong"
+        }
+    )
+    print(f"Status: {response.status_code}")
+    print(f"Response: {response.text}")
+    
+    if response.status_code == 403:
+        print(f"✅ Returns 403 for wrong token")
+        checks.append(True)
+    else:
+        print(f"❌ Expected 403, got {response.status_code}")
+        checks.append(False)
+    
+    success = all(checks)
+    print(f"\n{'✅ TEST 5 PASSED' if success else '❌ TEST 5 FAILED'} ({sum(checks)}/{len(checks)} checks)")
+    return success
+
+def test_6_webhook_traffic_counters():
+    """TEST 6: Verify webhook_traffic counters increased"""
+    print("\n" + "="*80)
+    print("TEST 6: Verify webhook_traffic counters increased")
+    print("="*80)
+    
+    checks = []
+    
+    response = requests.get(f"{API_BASE}/whatsapp/status", headers=get_headers(auth=True))
+    print(f"Status: {response.status_code}")
+    
+    if response.status_code != 200:
+        print(f"❌ Expected 200, got {response.status_code}")
         return False
+    
+    data = response.json()
+    webhook_traffic = data.get("webhook_traffic", {})
+    
+    print(f"Webhook traffic: {json.dumps(webhook_traffic, indent=2)}")
+    
+    received_count = webhook_traffic.get("received_count", 0)
+    processed_messages = webhook_traffic.get("processed_messages", 0)
+    processed_statuses = webhook_traffic.get("processed_statuses", 0)
+    
+    if received_count > 0:
+        print(f"✅ received_count increased: {received_count}")
+        checks.append(True)
+    else:
+        print(f"❌ received_count should be > 0, got {received_count}")
+        checks.append(False)
+    
+    if processed_messages >= 1:
+        print(f"✅ processed_messages >= 1: {processed_messages}")
+        checks.append(True)
+    else:
+        print(f"❌ processed_messages should be >= 1, got {processed_messages}")
+        checks.append(False)
+    
+    if processed_statuses >= 4:
+        print(f"✅ processed_statuses >= 4: {processed_statuses}")
+        checks.append(True)
+    else:
+        print(f"❌ processed_statuses should be >= 4, got {processed_statuses}")
+        checks.append(False)
+    
+    success = all(checks)
+    print(f"\n{'✅ TEST 6 PASSED' if success else '❌ TEST 6 FAILED'} ({sum(checks)}/{len(checks)} checks)")
+    return success
+
+def test_7_inbound_non_text_types():
+    """TEST 7: Inbound non-text types (reaction, location)"""
+    print("\n" + "="*80)
+    print("TEST 7: Inbound non-text types (reaction, location)")
+    print("="*80)
+    
+    checks = []
+    fake_phone = "919000000002"
+    
+    # Test reaction
+    print("\n--- Test reaction message ---")
+    timestamp = int(time.time() * 1000)
+    wamid_reaction = f"wamid.REACTION_{timestamp}"
+    
+    payload_reaction = {
+        "object": "whatsapp_business_account",
+        "entry": [{
+            "id": "971659015904015",
+            "changes": [{
+                "value": {
+                    "messaging_product": "whatsapp",
+                    "metadata": {
+                        "display_phone_number": "15515506716",
+                        "phone_number_id": "1236101482916191"
+                    },
+                    "contacts": [{
+                        "profile": {
+                            "name": "Reaction Tester"
+                        },
+                        "wa_id": fake_phone
+                    }],
+                    "messages": [{
+                        "from": fake_phone,
+                        "id": wamid_reaction,
+                        "timestamp": str(int(time.time())),
+                        "type": "reaction",
+                        "reaction": {
+                            "message_id": "wamid.some_previous_message",
+                            "emoji": "👍"
+                        }
+                    }]
+                },
+                "field": "messages"
+            }]
+        }]
+    }
+    
+    response = requests.post(
+        f"{API_BASE}/whatsapp/webhook",
+        json=payload_reaction,
+        headers={"Content-Type": "application/json"}
+    )
+    print(f"Status: {response.status_code}")
+    
+    if response.status_code == 200 and response.json().get("ok") == True:
+        print(f"✅ Reaction webhook accepted")
+        checks.append(True)
+    else:
+        print(f"❌ Reaction webhook failed: {response.status_code}")
+        checks.append(False)
+    
+    time.sleep(1)
+    
+    # Get conversations to find the thread
+    response = requests.get(f"{API_BASE}/whatsapp/conversations", headers=get_headers(auth=True))
+    if response.status_code == 200:
+        conversations = response.json().get("conversations", [])
+        thread = None
+        for conv in conversations:
+            if conv.get("lead_phone") == fake_phone or conv.get("lead_phone") == f"91{fake_phone}":
+                thread = conv
+                break
+        
+        if thread:
+            # Get conversation details
+            response = requests.get(
+                f"{API_BASE}/whatsapp/conversations/{thread.get('id')}",
+                headers=get_headers(auth=True)
+            )
+            if response.status_code == 200:
+                conv_data = response.json()
+                messages = conv_data.get("messages", [])
+                reaction_msg = next((m for m in messages if m.get("wa_message_id") == wamid_reaction), None)
+                
+                if reaction_msg:
+                    print(f"✅ Reaction message stored")
+                    content = reaction_msg.get("content", "")
+                    print(f"  Content: {content}")
+                    
+                    # Should contain the emoji, NOT a generic placeholder like "[reaction]"
+                    if "👍" in content and "[reaction]" not in content.lower():
+                        print(f"  ✅ Content contains emoji '👍' (NOT generic placeholder)")
+                        checks.append(True)
+                    else:
+                        print(f"  ❌ Content should contain emoji, not generic placeholder")
+                        checks.append(False)
+                else:
+                    print(f"❌ Reaction message not found")
+                    checks.append(False)
+            else:
+                print(f"❌ Failed to get conversation details")
+                checks.append(False)
+        else:
+            print(f"❌ Thread not found for reaction")
+            checks.append(False)
+    else:
+        print(f"❌ Failed to get conversations")
+        checks.append(False)
+    
+    # Test location
+    print("\n--- Test location message ---")
+    timestamp = int(time.time() * 1000)
+    wamid_location = f"wamid.LOCATION_{timestamp}"
+    
+    payload_location = {
+        "object": "whatsapp_business_account",
+        "entry": [{
+            "id": "971659015904015",
+            "changes": [{
+                "value": {
+                    "messaging_product": "whatsapp",
+                    "metadata": {
+                        "display_phone_number": "15515506716",
+                        "phone_number_id": "1236101482916191"
+                    },
+                    "contacts": [{
+                        "profile": {
+                            "name": "Location Tester"
+                        },
+                        "wa_id": fake_phone
+                    }],
+                    "messages": [{
+                        "from": fake_phone,
+                        "id": wamid_location,
+                        "timestamp": str(int(time.time())),
+                        "type": "location",
+                        "location": {
+                            "latitude": 37.7749,
+                            "longitude": -122.4194,
+                            "name": "Showroom",
+                            "address": "123 Main St"
+                        }
+                    }]
+                },
+                "field": "messages"
+            }]
+        }]
+    }
+    
+    response = requests.post(
+        f"{API_BASE}/whatsapp/webhook",
+        json=payload_location,
+        headers={"Content-Type": "application/json"}
+    )
+    print(f"Status: {response.status_code}")
+    
+    if response.status_code == 200 and response.json().get("ok") == True:
+        print(f"✅ Location webhook accepted")
+        checks.append(True)
+    else:
+        print(f"❌ Location webhook failed: {response.status_code}")
+        checks.append(False)
+    
+    time.sleep(1)
+    
+    # Get conversation details again
+    if thread:
+        response = requests.get(
+            f"{API_BASE}/whatsapp/conversations/{thread.get('id')}",
+            headers=get_headers(auth=True)
+        )
+        if response.status_code == 200:
+            conv_data = response.json()
+            messages = conv_data.get("messages", [])
+            location_msg = next((m for m in messages if m.get("wa_message_id") == wamid_location), None)
+            
+            if location_msg:
+                print(f"✅ Location message stored")
+                content = location_msg.get("content", "")
+                print(f"  Content: {content}")
+                
+                # Should contain the location name "Showroom", NOT a generic placeholder like "[location]"
+                if "Showroom" in content and "[location]" not in content.lower():
+                    print(f"  ✅ Content contains location name 'Showroom' (NOT generic placeholder)")
+                    checks.append(True)
+                else:
+                    print(f"  ❌ Content should contain location name, not generic placeholder")
+                    checks.append(False)
+            else:
+                print(f"❌ Location message not found")
+                checks.append(False)
+        else:
+            print(f"❌ Failed to get conversation details")
+            checks.append(False)
+    
+    success = all(checks)
+    print(f"\n{'✅ TEST 7 PASSED' if success else '❌ TEST 7 FAILED'} ({sum(checks)}/{len(checks)} checks)")
+    return success
 
 def main():
+    """Run all tests"""
     print("="*80)
-    print("WhatsApp AI Read Endpoints - Regression Test")
-    print("Performance Refactor Verification")
+    print("WhatsApp AI Backend Regression Test Suite")
+    print("Testing webhook signature diagnostics + out-of-order status ticks")
     print("="*80)
     
-    # Login
-    token = login()
-    if not token:
-        print("\n❌ OVERALL RESULT: FAILED (Login failed)")
+    # Login once
+    if not login():
+        print("\n❌ LOGIN FAILED - Cannot proceed with tests")
         return
     
-    # Test 1: List conversations
-    conv_a, conv_b = test_1_list_conversations(token)
-    if not conv_a:
-        print("\n❌ OVERALL RESULT: FAILED (Test 1 failed)")
-        return
+    results = {}
     
-    # Test 2: Get conversation with no cross-contamination
-    if not test_2_get_conversation_no_contamination(token, conv_a, conv_b):
-        print("\n❌ OVERALL RESULT: FAILED (Test 2 failed)")
-        return
+    # Test 1: GET /api/whatsapp/status
+    results["test_1"] = test_1_whatsapp_status()
     
-    # Test 3: Response time (5 sequential calls)
-    if not test_3_response_time_5_calls(token, conv_a):
-        print("\n❌ OVERALL RESULT: FAILED (Test 3 failed)")
-        return
+    # Test 2: POST /api/whatsapp/templates/sync
+    results["test_2"] = test_2_template_sync()
     
-    # Test 4: Messages after filter
-    if not test_4_messages_after_filter(token, conv_a):
-        print("\n❌ OVERALL RESULT: FAILED (Test 4 failed)")
-        return
+    # Test 3: Inbound message webhook
+    test_3_result, wamid, conversation_id = test_3_inbound_message_webhook()
+    results["test_3"] = test_3_result
     
-    # Test 5: Conversation not found (404)
-    if not test_5_conversation_not_found(token):
-        print("\n❌ OVERALL RESULT: FAILED (Test 5 failed)")
-        return
+    # Test 4: Out-of-order status ticks (MOST IMPORTANT)
+    results["test_4"] = test_4_out_of_order_status_ticks(wamid, conversation_id)
     
-    # Test 6: Concurrency smoke test
-    if not test_6_concurrency_smoke(token, conv_a):
-        print("\n❌ OVERALL RESULT: FAILED (Test 6 failed)")
-        return
+    # Test 5: Webhook GET verification
+    results["test_5"] = test_5_webhook_get_verification()
     
-    # All tests passed
+    # Test 6: Webhook traffic counters
+    results["test_6"] = test_6_webhook_traffic_counters()
+    
+    # Test 7: Inbound non-text types
+    results["test_7"] = test_7_inbound_non_text_types()
+    
+    # Summary
     print("\n" + "="*80)
-    print("✅ ALL TESTS PASSED (6/6)")
+    print("TEST SUMMARY")
     print("="*80)
-    print("\nSummary:")
-    print("  ✅ Test 1: List conversations (sorted, live_mode=false)")
-    print("  ✅ Test 2: Get conversation (no cross-contamination)")
-    print("  ✅ Test 3: Response time (5 sequential calls)")
-    print("  ✅ Test 4: Messages after filter")
-    print("  ✅ Test 5: Conversation not found (404)")
-    print("  ✅ Test 6: Concurrency smoke test (20 concurrent requests)")
+    passed = sum(1 for v in results.values() if v)
+    total = len(results)
+    
+    for test_name, result in results.items():
+        status = "✅ PASS" if result else "❌ FAIL"
+        print(f"{test_name}: {status}")
+    
+    print(f"\nTotal: {passed}/{total} tests passed")
+    
+    if passed == total:
+        print("\n🎉 ALL TESTS PASSED!")
+    else:
+        print(f"\n⚠️  {total - passed} test(s) failed")
 
 if __name__ == "__main__":
     main()
