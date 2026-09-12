@@ -36,6 +36,9 @@ const WhatsAppAI = () => {
   const [liveMode, setLiveMode] = useState(false);
   const [activeId, setActiveId] = useState(null);
   const [activeConv, setActiveConv] = useState(null);
+  const [loadingConv, setLoadingConv] = useState(false);
+  const activeIdRef = useRef(null);
+  const loadAbortRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [search, setSearch] = useState('');
@@ -83,32 +86,36 @@ const WhatsAppAI = () => {
       const res = await fetch(`${API_URL}/api/whatsapp/conversations/${id}`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
+      if (activeIdRef.current !== id) return; // switched away — ignore stale response
       setActiveConv(data.conversation);
       setMessages(data.messages || []);
       setAppointments(data.appointments || []);
       const msgs = data.messages || [];
       lastTsRef.current = msgs.length ? msgs[msgs.length - 1].created_at : null;
+      // mark current last message as already handled so opening does NOT auto-fire the AI
+      suggestedForRef.current = msgs.length ? msgs[msgs.length - 1].id : null;
     } catch (e) { /* ignore */ }
   }, []);
 
   const pollActive = useCallback(async () => {
-    if (!activeId) return;
+    const id = activeIdRef.current;
+    if (!id) return;
     try {
       const q = lastTsRef.current ? `?after=${encodeURIComponent(lastTsRef.current)}` : '';
-      const res = await fetch(`${API_URL}/api/whatsapp/conversations/${activeId}/messages${q}`, { headers: authHeaders() });
+      const res = await fetch(`${API_URL}/api/whatsapp/conversations/${id}/messages${q}`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
+      if (activeIdRef.current !== id) return; // switched away — ignore stale response
       const fresh = data.messages || [];
       if (fresh.length) {
         setMessages(prev => {
           const ids = new Set(prev.map(m => m.id));
-          const merged = [...prev, ...fresh.filter(m => !ids.has(m.id))];
-          return merged;
+          return [...prev, ...fresh.filter(m => !ids.has(m.id))];
         });
         lastTsRef.current = fresh[fresh.length - 1].created_at;
       }
     } catch (e) { /* ignore */ }
-  }, [activeId]);
+  }, []);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
@@ -130,34 +137,44 @@ const WhatsAppAI = () => {
   }, [messages]);
 
   const openConversation = async (c) => {
+    if (activeIdRef.current === c.id) return;   // already open
+    // instantly switch UI to the clicked thread (no stale content, no lag)
+    activeIdRef.current = c.id;
+    lastTsRef.current = null;
     setActiveId(c.id);
+    setActiveConv(c);            // show correct header/context immediately from the list item
+    setMessages([]);
+    setAppointments([]);
+    setLoadingConv(true);
     setSuggestions([]); setCreativeIdeas([]); setSuggestShown(false); suggestedForRef.current = null;
     setSummary(null);
-    await loadConversation(c.id);
-    // reflect read locally
     setConversations(prev => prev.map(x => x.id === c.id ? { ...x, unread_count: 0 } : x));
+    await loadConversation(c.id);
+    if (activeIdRef.current === c.id) setLoadingConv(false);
   };
 
-  // auto-suggest (non-intrusive): only once when latest message is from customer
+  // auto-suggest: ONLY when a NEW inbound message arrives while viewing (not on open) — keeps AI calls low
   useEffect(() => {
-    if (!activeId || !messages.length) return;
+    if (!activeId || !messages.length || loadingConv) return;
     const last = messages[messages.length - 1];
     if (last.direction === 'inbound' && suggestedForRef.current !== last.id) {
       suggestedForRef.current = last.id;
       fetchSuggestions(true);
     }
-  }, [messages, activeId]);
+  }, [messages, activeId, loadingConv]);
 
   const fetchSuggestions = async (auto = false) => {
-    if (!activeId) return;
+    const id = activeIdRef.current;
+    if (!id) return;
     setSuggestLoading(true);
     if (!auto) setSuggestShown(true);
     try {
-      const res = await fetch(`${API_URL}/api/whatsapp/conversations/${activeId}/suggestions`, {
+      const res = await fetch(`${API_URL}/api/whatsapp/conversations/${id}/suggestions`, {
         method: 'POST', headers: authHeaders()
       });
       if (res.ok) {
         const data = await res.json();
+        if (activeIdRef.current !== id) return; // switched away
         setSuggestions(data.suggestions || []);
         setCreativeIdeas(data.creative_ideas || []);
         setSuggestShown(true);
@@ -165,7 +182,9 @@ const WhatsAppAI = () => {
           setActiveConv(prev => prev ? { ...prev, temperature: data.temperature, intent: data.intent } : prev);
         }
       }
-    } catch (e) { /* ignore */ } finally { setSuggestLoading(false); }
+    } catch (e) { /* ignore */ } finally {
+      if (activeIdRef.current === id) setSuggestLoading(false);
+    }
   };
 
   const draftFromIdea = async (idea, idx) => {
@@ -393,6 +412,9 @@ const WhatsAppAI = () => {
             </header>
 
             <div className="wa-messages">
+              {loadingConv && messages.length === 0 && (
+                <div className="wa-loading"><span className="wa-spinner" /> Loading conversation…</div>
+              )}
               {grouped.map((g, i) => g.type === 'day' ? (
                 <div key={`day-${i}`} className="wa-day"><span>{g.day}</span></div>
               ) : (

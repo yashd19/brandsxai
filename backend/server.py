@@ -5,6 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import re
+import asyncio
 import logging
 import json
 from pathlib import Path
@@ -54,26 +55,43 @@ _mysql_available = None
 _mysql_check_time = None
 MYSQL_RETRY_INTERVAL = 60  # Retry MySQL check every 60 seconds
 
-def try_mysql_connection():
-    """Try to get MySQL connection with caching to avoid repeated timeouts"""
+def _probe_mysql():
+    """Blocking MySQL reachability probe. Runs ONLY in a background thread — never on the event loop."""
     global _mysql_available, _mysql_check_time
-    
-    current_time = datetime.now(timezone.utc)
-    
-    # Skip MySQL if we know it's down and haven't waited long enough
-    if _mysql_available is False and _mysql_check_time:
-        elapsed = (current_time - _mysql_check_time).total_seconds()
-        if elapsed < MYSQL_RETRY_INTERVAL:
-            return None
-    
     try:
         conn = pymysql.connect(**MYSQL_CONFIG)
+        conn.close()
+        if _mysql_available is not True:
+            logger.info("MySQL reachable — MySQL-first mode active")
         _mysql_available = True
-        _mysql_check_time = current_time
-        return conn
+    except Exception as e:
+        if _mysql_available is not False:
+            logger.warning(f"MySQL unreachable, using MongoDB: {e}")
+        _mysql_available = False
+    _mysql_check_time = datetime.now(timezone.utc)
+
+def _mysql_prober_loop():
+    import time as _time
+    while True:
+        _probe_mysql()
+        _time.sleep(MYSQL_RETRY_INTERVAL)
+
+def start_mysql_prober():
+    import threading
+    t = threading.Thread(target=_mysql_prober_loop, daemon=True, name="mysql-prober")
+    t.start()
+
+def try_mysql_connection():
+    """Get a MySQL connection WITHOUT ever blocking the async event loop.
+    MySQL remains first preference: we connect only when the background probe reports it reachable;
+    otherwise return None immediately so callers fall back to MongoDB."""
+    global _mysql_available
+    if _mysql_available is not True:
+        return None
+    try:
+        return pymysql.connect(**MYSQL_CONFIG)
     except pymysql.Error as e:
         _mysql_available = False
-        _mysql_check_time = current_time
         logger.warning(f"MySQL connection failed: {e}")
         return None
 
@@ -465,10 +483,14 @@ async def init_mongodb_collections():
             ]
             await mongo_db.brandsxai_wa_templates.insert_many(default_templates)
 
-        # WhatsApp indexes
-        await mongo_db.brandsxai_wa_conversations.create_index("brand_id")
-        await mongo_db.brandsxai_wa_conversations.create_index("lead_phone")
-        await mongo_db.brandsxai_wa_messages.create_index("conversation_id")
+        # WhatsApp indexes (compound indexes match the hot query paths for fast thread switching + polling)
+        await mongo_db.brandsxai_wa_conversations.create_index([("brand_id", 1), ("last_message_at", -1)])
+        await mongo_db.brandsxai_wa_conversations.create_index([("brand_id", 1), ("lead_phone", 1)])
+        await mongo_db.brandsxai_wa_conversations.create_index("id", unique=True)
+        await mongo_db.brandsxai_wa_messages.create_index([("conversation_id", 1), ("created_at", 1)])
+        await mongo_db.brandsxai_wa_messages.create_index("wa_message_id")
+        await mongo_db.brandsxai_wa_appointments.create_index([("conversation_id", 1), ("created_at", -1)])
+        await mongo_db.brandsxai_wa_media.create_index("media_id", unique=True)
 
         # Create claim processing indexes
         await mongo_db.brandsxai_claim_sessions.create_index("user_id")
@@ -2743,13 +2765,16 @@ async def wa_create_conversation(req: WAConversationCreate, current_user: dict =
 async def wa_get_conversation(conv_id: str, current_user: dict = Depends(get_current_user)):
     if not current_user or current_user.get('type') == 'admin':
         raise HTTPException(status_code=403, detail="User access required")
-    conv = await mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id}, {"_id": 0})
+    # Run all reads + the mark-read write concurrently (single round-trip latency instead of 4)
+    conv, msgs, appts, _ = await asyncio.gather(
+        mongo_db.brandsxai_wa_conversations.find_one({"id": conv_id}, {"_id": 0}),
+        mongo_db.brandsxai_wa_messages.find({"conversation_id": conv_id}, {"_id": 0}).sort("created_at", 1).to_list(500),
+        mongo_db.brandsxai_wa_appointments.find({"conversation_id": conv_id}, {"_id": 0}).sort("created_at", -1).to_list(20),
+        mongo_db.brandsxai_wa_conversations.update_one({"id": conv_id}, {"$set": {"unread_count": 0}}),
+    )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    msgs = await mongo_db.brandsxai_wa_messages.find({"conversation_id": conv_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
-    appts = await mongo_db.brandsxai_wa_appointments.find({"conversation_id": conv_id}, {"_id": 0}).sort("created_at", -1).to_list(20)
-    # mark read
-    await mongo_db.brandsxai_wa_conversations.update_one({"id": conv_id}, {"$set": {"unread_count": 0}})
+    conv["unread_count"] = 0
     return {"conversation": conv, "messages": msgs, "appointments": appts, "live_mode": wa_is_live()}
 
 @api_router.get("/whatsapp/conversations/{conv_id}/messages")
@@ -3105,6 +3130,9 @@ app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], 
 
 @app.on_event("startup")
 async def startup_event():
+    # Probe MySQL once off the event loop (so startup never blocks), then keep probing in the background
+    await asyncio.to_thread(_probe_mysql)
+    start_mysql_prober()
     mysql_conn = try_mysql_connection()
     if mysql_conn:
         init_mysql_tables(mysql_conn)
