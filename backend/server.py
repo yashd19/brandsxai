@@ -2899,6 +2899,23 @@ async def wa_poll_messages(conv_id: str, after: Optional[str] = Query(None), cur
     msgs = await mongo_db.brandsxai_wa_messages.find(query, {"_id": 0}).sort("created_at", 1).to_list(200)
     return {"messages": msgs}
 
+@api_router.get("/whatsapp/conversations/{conv_id}/message-status")
+async def wa_message_statuses(conv_id: str, current_user: dict = Depends(get_current_user)):
+    """Compact delivery-status map for a thread's outbound messages.
+
+    The message poll uses ?after= and therefore only ever APPENDS new messages, so it can
+    never refresh the tick of a message already on screen. Meta delivers 'delivered' and
+    'read' for messages we sent minutes ago, so the UI polls this cheap endpoint to keep
+    the ticks live.
+    """
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    msgs = await mongo_db.brandsxai_wa_messages.find(
+        {"conversation_id": conv_id, "direction": "outbound"},
+        {"_id": 0, "id": 1, "status": 1, "status_timestamps": 1},
+    ).sort("created_at", -1).to_list(200)
+    return {"statuses": msgs}
+
 @api_router.post("/whatsapp/conversations/{conv_id}/messages")
 async def wa_send_message(conv_id: str, req: WATextSend, current_user: dict = Depends(get_current_user)):
     if not current_user or current_user.get('type') == 'admin':

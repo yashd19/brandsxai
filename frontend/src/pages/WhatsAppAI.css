@@ -140,6 +140,15 @@
 .wa-meta svg { color: #92a0a8; }
 .wa-meta svg.read { color: #53bdeb; }
 
+/* WhatsApp delivery ticks (driven by Meta status webhooks) */
+.wa-ticks { display: inline-flex; align-items: center; line-height: 0; cursor: default; }
+.wa-ticks svg { color: #92a0a8; }
+.wa-ticks.read svg { color: #53bdeb; }
+.wa-ticks.failed svg { color: #ef4444; }
+.wa-ticks.sending svg { color: #a8b4bb; }
+.wa-ticks.sending { animation: wa-tick-pulse 1.2s ease-in-out infinite; }
+@keyframes wa-tick-pulse { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+
 /* ---------- suggestions ---------- */
 .wa-suggest { background: rgba(255,255,255,.96); border-top: 1px solid #e2e2e2; padding: 8px 14px; }
 .wa-suggest-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }

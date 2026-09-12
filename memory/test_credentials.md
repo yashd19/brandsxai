@@ -1,5 +1,14 @@
 # Test Credentials
 
+## >>> APP URL (open THIS in the browser) <<<
+https://f11fcb3b-5aba-4b2b-a12a-6a2028a9906c.preview.emergentagent.com/login
+
+DO NOT open https://shily-orthopneic-shawnna.ngrok-free.dev in a browser - that ngrok
+tunnel points at port 8001 (the BACKEND API only) and is used solely for Meta webhooks.
+It has no UI and will just return JSON / 404 for /login.
+
+All three logins below were verified working by the frontend testing agent.
+
 Login lookup order: MySQL first, then MongoDB fallback (MySQL RDS currently blocked, so Mongo is used).
 
 ## Admin Portal (/admin/login)

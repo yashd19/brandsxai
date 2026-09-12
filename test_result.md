@@ -233,7 +233,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 5
+  test_sequence: 6
   run_ui: true
 
 test_plan:
@@ -483,3 +483,49 @@ agent_communication:
       message: "Please regression-test the webhook fixes. Base URL = REACT_APP_BACKEND_URL, /api prefix. Login testuser/test123 once. NOTE: backend/.env currently has WA_REQUIRE_SIGNATURE=false and a KNOWN-WRONG META_APP_SECRET, so correctly-signed AND wrongly-signed webhooks are both processed - that is intentional for now. Do NOT change .env. Do NOT try to fix META_APP_SECRET; only the user can supply it."
     - agent: "testing"
       message: "✅ ALL 7 REGRESSION TESTS PASSED (100% success - 57/57 individual checks). Comprehensive testing confirms all three bug fixes are working correctly in LIVE mode. SUMMARY: (1) GET /api/whatsapp/status diagnostics endpoint working perfectly - returns all required fields including webhook_traffic telemetry and webhook_signature check. (2) Template sync working - all 14 templates synced with correct language 'en_US' (NOT 'en'), idempotent. (3) CRITICAL FIX VERIFIED: Inbound webhooks auto-create threads with WhatsApp profile names (lead_name='Test Customer'), NOT phone numbers. (4) MOST IMPORTANT: Out-of-order status tick fix verified - status NEVER downgrades (read→delivered or read→sent blocked), only upgrades monotonically, 'failed' always applies, status_timestamps accumulates all ticks. (5) Webhook GET verification accepts both env tokens. (6) Webhook traffic counters working (received_count=16, processed_messages=4, processed_statuses=10). (7) Non-text inbound types (reaction, location) handled with real content (emoji '👍', location name 'Showroom'), NOT generic placeholders. App correctly processes webhooks with WA_REQUIRE_SIGNATURE=false as intended. All fixes production-ready."
+
+frontend:
+  - task: "WhatsApp AI - real delivery ticks on chat bubbles + live tick refresh"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/WhatsAppAI.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: false
+          agent: "user"
+          comment: "User reported: 'I am not able to login through creds.. give me real credentials' and asked for WhatsApp-style sent/delivered/read ticks on each chat bubble."
+        - working: true
+          agent: "main"
+          comment: "LOGIN INVESTIGATED - credentials are CORRECT and login works. Verified POST /api/auth/login returns 200 for testuser/test123 AND mukesh/mukesh123, and POST /api/admin/login returns 200 for madoveradmin/admin@123, on BOTH localhost:8001 and the external preview URL. Also drove a real browser through /login with testuser/test123 -> successfully landed on /dashboard. CONCLUSION: the user was almost certainly on the WRONG URL. The ngrok domain (https://shily-orthopneic-shawnna.ngrok-free.dev) is tunnelled to port 8001 = the BACKEND ONLY, so opening it in a browser shows API JSON, not the app. The app UI is at the REACT_APP_BACKEND_URL preview domain + /login. An older domain (wa-business-flow.preview.emergentagent.com) also appears in this file's history and is not this workspace."
+        - working: true
+          agent: "main"
+          comment: "BUG FIX - ticks were fake. The bubble previously ALWAYS rendered a <CheckCheck> double tick regardless of status, only turning blue on 'read'. So 'sending', 'sent' and 'failed' all looked identical to 'delivered'. Added a proper <Ticks> component: sending -> pulsing Clock, sent -> single grey Check, delivered -> double grey CheckCheck, read -> double BLUE CheckCheck (#53bdeb), failed -> red AlertCircle (#ef4444). Each carries data-testid (wa-tick-sending|sent|delivered|read|failed), an aria-label, and a title tooltip built from the REAL Meta status_timestamps, e.g. 'Sent 14:12 - Delivered 14:12 - Read 14:19'. CSS added in WhatsAppAI.css."
+        - working: true
+          agent: "main"
+          comment: "BUG FIX 2 - ticks could never update (root cause). pollActive() polls GET /conversations/{id}/messages?after=<lastTs>, which is APPEND-ONLY, so a message already on screen could never have its status refreshed - yet Meta sends 'delivered'/'read' minutes later. Ticks would have frozen on 'sent' forever. Added backend GET /api/whatsapp/conversations/{conv_id}/message-status returning a compact [{id,status,status_timestamps}] for outbound messages, and pollActive now fetches messages + statuses in parallel (Promise.all) and merges the status map into existing messages, preserving the activeIdRef stale-response guards."
+        - working: true
+          agent: "main"
+          comment: "MAIN-AGENT BROWSER CHECK (needs testing-agent confirmation): logged in as testuser, opened WhatsApp AI, clicked the real thread 'Prod Test (Mukesh)' / 12012688622. Found 3 bubbles, all rendering data-testid='wa-tick-read' with title 'Read 08:48 PM'. Confirms the REAL Meta read receipts flow all the way to the UI. GET /message-status returned status 'read' for all 3 with status_timestamps {'sent':'1789244811','delivered':'1789244812','read':'1789246138'}. No horizontal overflow at 1920px."
+        - working: true
+          agent: "testing"
+          comment: "✅ COMPREHENSIVE TESTING COMPLETE (ALL 6 TESTS PASSED - 100% success). TEST 1 - LOGIN (4/4 PASS): ✅ testuser/test123 → /dashboard with username displayed. ✅ mukesh/mukesh123 → /dashboard with username displayed. ✅ madoveradmin/admin@123 → /admin/portal. ✅ NEGATIVE: testuser/wrongpassword stayed on /login with 'Invalid credentials' error (did NOT navigate to /dashboard). CONCLUSION: Login is NOT broken - all credentials work perfectly. User was likely on wrong URL (ngrok backend-only URL instead of preview frontend URL). TEST 2 - NAVIGATE TO WHATSAPP AI (PASS): ✅ Found WhatsApp AI page with 'Chats' panel. ✅ Found exactly 1 thread: 'Prod Test (Mukesh)' / 12012688622. ✅ Successfully opened thread. TEST 3 - DELIVERY TICKS (PERFECT): ✅ Found 3 outbound messages, 0 inbound (as expected). ✅ All 3 messages have wa-tick-read (expected 3, got 3). ✅ Read tick color is EXACTLY rgb(83, 189, 235) (#53bdeb) - PERFECT MATCH. ✅ Tooltips correct: 'Read 08:48 PM' and 'Sent 08:26 PM · Delivered 08:26 PM · Read 08:48 PM' (shows full progression). ✅ No ticks on inbound messages (correct). TEST 4 - LIVE TICK REFRESH (PERFECT): ✅ Found 4 /message-status calls in 10s (expected ~3-4, got 4). ✅ Found 4 /messages?after= calls in parallel. ✅ Ticks remained rendered after 10s (no flickering or disappearing). TEST 5 - THREAD STABILITY (PASS): ✅ Context panel shows 'Prod Test (Mukesh)', phone 12012688622, WARM temperature. ✅ AI sparkle button works (Sales AI code verified in WhatsAppAI.jsx line 543). ✅ No whole-page scroll (scrollHeight = 0px). TEST 6 - RESPONSIVE (PASS): ✅ Ticks render on mobile (3 ticks found at 390x844). Minor: Horizontal overflow on mobile (8 elements: dashboard-main, dashboard-header, dashboard-content, wa-root, wa-chat, wa-chat-head, wa-chat-actions, wa-action) - does NOT block functionality. Screenshots saved: whatsapp-ai-desktop.png, whatsapp-ai-mobile.png, admin-login-page.png, login-wrong-password.png, ai-panel.png."
+
+  - task: "WhatsApp AI - inbound customer reply (live)"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuke_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "STILL NOT PROVEN WITH REAL TRAFFIC. Inspected all 21 webhook POSTs Meta has sent: they are ALL 'statuses' events (sent/delivered/read). There is NOT ONE inbound 'messages' event, i.e. the customer (+1 201 268 8622) has NOT replied on WhatsApp yet. Read receipts DID arrive for all 3 outbound messages, proving the user opened them. Inbound handling itself is verified by the testing agent via simulated Meta payloads (profile-name threading, dedupe, reaction/location types) - only the real-traffic confirmation is outstanding and it requires the user to actually reply from the handset."
+
+agent_communication:
+    - agent: "main"
+      message: "Frontend verification needed for the user-reported login issue and the new delivery ticks. Credentials ARE valid (testuser/test123, mukesh/mukesh123, madoveradmin/admin@123) - please confirm login works end to end from the preview URL and that the tick component renders the right icon/colour per status. Do NOT send real WhatsApp messages to any real number."
+    - agent: "testing"
+      message: "✅ VERIFICATION COMPLETE (ALL TESTS PASSED - 100% success). Comprehensive testing confirms: (1) LOGIN IS NOT BROKEN - all 3 credentials work perfectly (testuser/test123, mukesh/mukesh123, madoveradmin/admin@123), negative case correctly rejects wrong password with 'Invalid credentials' error. User was likely on wrong URL. (2) DELIVERY TICKS FEATURE WORKING PERFECTLY - all 3 outbound messages show wa-tick-read with EXACT color rgb(83, 189, 235), tooltips show correct timestamps including full progression 'Sent 08:26 PM · Delivered 08:26 PM · Read 08:48 PM'. (3) LIVE TICK REFRESH WORKING - app polls /message-status every 2.5s (4 calls in 10s), ticks remain rendered with no flickering. (4) Thread stability confirmed, no whole-page scroll. (5) Minor: Mobile horizontal overflow (8 elements) does not block functionality. Feature is production-ready."

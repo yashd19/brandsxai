@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageCircle, Send, Sparkles, Search, Plus, Calendar, X, Image as ImageIcon,
-  Bot, User, CheckCheck, Phone, TrendingUp, FileText, ChevronRight, Lightbulb
+  Bot, User, CheckCheck, Check, Clock, AlertCircle, Phone, TrendingUp, FileText, ChevronRight, Lightbulb
 } from 'lucide-react';
 import './WhatsAppAI.css';
 
@@ -10,6 +10,68 @@ const getToken = () => localStorage.getItem('token');
 const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` });
 
 const tempColor = { hot: '#ef4444', warm: '#f59e0b', cold: '#3b82f6' };
+
+// Real WhatsApp delivery ticks, driven by Meta status webhooks:
+//   sending  -> clock          (optimistic, not yet accepted by Meta)
+//   sent     -> single grey    (accepted by Meta)
+//   delivered-> double grey    (reached the handset)
+//   read     -> double BLUE    (opened by the customer)
+//   failed   -> red alert      (Meta rejected / could not deliver)
+const TICK_LABEL = {
+  sending: 'Sending…', sent: 'Sent', delivered: 'Delivered', read: 'Read', failed: 'Failed to send',
+};
+
+function fmtEpoch(ts) {
+  if (!ts) return '';
+  const n = Number(ts);
+  if (!n) return '';
+  try { return new Date(n * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  catch { return ''; }
+}
+
+function Ticks({ status, timestamps }) {
+  const s = status || 'sent';
+  const t = timestamps || {};
+  // Tooltip shows the actual Meta timestamps, e.g. "Sent 14:12 · Delivered 14:12 · Read 14:19"
+  const parts = ['sent', 'delivered', 'read']
+    .filter((k) => t[k])
+    .map((k) => `${TICK_LABEL[k]} ${fmtEpoch(t[k])}`);
+  const title = parts.length ? parts.join(' · ') : TICK_LABEL[s] || s;
+
+  if (s === 'failed') {
+    return (
+      <span className="wa-ticks failed" title={title} data-testid="wa-tick-failed" aria-label="Failed to send">
+        <AlertCircle size={13} />
+      </span>
+    );
+  }
+  if (s === 'sending') {
+    return (
+      <span className="wa-ticks sending" title={title} data-testid="wa-tick-sending" aria-label="Sending">
+        <Clock size={12} />
+      </span>
+    );
+  }
+  if (s === 'read') {
+    return (
+      <span className="wa-ticks read" title={title} data-testid="wa-tick-read" aria-label="Read">
+        <CheckCheck size={14} />
+      </span>
+    );
+  }
+  if (s === 'delivered') {
+    return (
+      <span className="wa-ticks delivered" title={title} data-testid="wa-tick-delivered" aria-label="Delivered">
+        <CheckCheck size={14} />
+      </span>
+    );
+  }
+  return (
+    <span className="wa-ticks sent" title={title} data-testid="wa-tick-sent" aria-label="Sent">
+      <Check size={14} />
+    </span>
+  );
+}
 
 function fmtTime(iso) {
   if (!iso) return '';
@@ -102,16 +164,43 @@ const WhatsAppAI = () => {
     if (!id) return;
     try {
       const q = lastTsRef.current ? `?after=${encodeURIComponent(lastTsRef.current)}` : '';
-      const res = await fetch(`${API_URL}/api/whatsapp/conversations/${id}/messages${q}`, { headers: authHeaders() });
-      if (!res.ok) return;
-      const data = await res.json();
+      // Fetch new messages AND refresh delivery ticks of messages already on screen.
+      // Meta sends 'delivered'/'read' for messages sent minutes ago, which the
+      // append-only ?after= poll can never pick up on its own.
+      const [res, stRes] = await Promise.all([
+        fetch(`${API_URL}/api/whatsapp/conversations/${id}/messages${q}`, { headers: authHeaders() }),
+        fetch(`${API_URL}/api/whatsapp/conversations/${id}/message-status`, { headers: authHeaders() }),
+      ]);
       if (activeIdRef.current !== id) return; // switched away — ignore stale response
-      const fresh = data.messages || [];
-      if (fresh.length) {
-        setMessages(prev => {
-          const ids = new Set(prev.map(m => m.id));
-          return [...prev, ...fresh.filter(m => !ids.has(m.id))];
+
+      let fresh = [];
+      if (res.ok) {
+        const data = await res.json();
+        fresh = data.messages || [];
+      }
+      let statusMap = null;
+      if (stRes.ok) {
+        const sd = await stRes.json();
+        statusMap = new Map((sd.statuses || []).map((s) => [s.id, s]));
+      }
+      if (activeIdRef.current !== id) return;
+
+      if (fresh.length || statusMap) {
+        setMessages((prev) => {
+          const ids = new Set(prev.map((m) => m.id));
+          let next = fresh.length ? [...prev, ...fresh.filter((m) => !ids.has(m.id))] : prev;
+          if (statusMap && statusMap.size) {
+            next = next.map((m) => {
+              const s = statusMap.get(m.id);
+              if (!s) return m;
+              if (m.status === s.status && m.status_timestamps === s.status_timestamps) return m;
+              return { ...m, status: s.status, status_timestamps: s.status_timestamps };
+            });
+          }
+          return next;
         });
+      }
+      if (fresh.length) {
         lastTsRef.current = fresh[fresh.length - 1].created_at;
       }
     } catch (e) { /* ignore */ }
@@ -437,7 +526,9 @@ const WhatsAppAI = () => {
                     {g.m.content && <span className="wa-text">{g.m.content}</span>}
                     <span className="wa-meta">
                       {fmtTime(g.m.created_at)}
-                      {g.m.direction === 'outbound' && <CheckCheck size={13} className={g.m.status === 'read' ? 'read' : ''} />}
+                      {g.m.direction === 'outbound' && (
+                        <Ticks status={g.m.status} timestamps={g.m.status_timestamps} />
+                      )}
                     </span>
                   </div>
                 </div>
