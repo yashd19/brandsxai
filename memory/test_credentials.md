@@ -16,12 +16,17 @@ Login lookup order: MySQL first, then MongoDB fallback (MySQL RDS currently bloc
 - Password: test123
 - Brand: Brand X | Features: Voice AI, Claim Processing, WhatsApp AI
 
-## WhatsApp / Meta Cloud API (live creds in backend/.env)
-- WHATSAPP_PHONE_NUMBER_ID: 1205736552634128
-- WEBHOOK_VERIFY_TOKEN: brandsxai_wa_verify_7bK9mQ2xP4
-- META_APP_SECRET: 7b28f01a1931401ed7a32b9000d83b7f  (32-char hex, VALID - signature checks verified)
-- META_ACCESS_TOKEN: INVALID / CORRUPTED (Meta 401 code 190 "could not be decrypted") - user must re-copy. Outbound sends fail with 502 until replaced.
+## WhatsApp / Meta Cloud API - LIVE & WORKING (backend/.env)
+- Business: "Swad Mania" | display number +1 551-550-6716 | quality GREEN | CLOUD_API
+- WHATSAPP_PHONE_NUMBER_ID: 1236101482916191
+- WHATSAPP_WABA_ID: 971659015904015
+- META_ACCESS_TOKEN: SYSTEM_USER token, NEVER EXPIRES (expires_at=0), app "SWAD MANIA LLAC" (1565083148587185)
+- META_APP_SECRET: d04f21b2f00b198c88bfb07eb95b3fe6 (32-hex, valid - signature checks verified)
+- Verify token (either is accepted): brandsxai_wa_verify_7bK9mQ2xP4  OR  asdfghjkl1234567890
 - WA_INGEST_TOKEN (X-Ingest-Token header): brandsxai_ingest_9fT3nQ8wZ1
-- Webhook callback URL (public, verified reachable): https://f11fcb3b-5aba-4b2b-a12a-6a2028a9906c.preview.emergentagent.com/api/whatsapp/webhook
-- Prod test recipient number: +1 201 268 8622 (E.164 12012688622)
-- Diagnostics: GET /api/whatsapp/status (auth as testuser/test123)
+- Webhook callback URL (ngrok -> this container, verified): https://shily-orthopneic-shawnna.ngrok-free.dev/api/whatsapp/webhook
+- Test recipient: +1 201 268 8622 (E.164 12012688622) - real hello_world message delivered to it
+- Diagnostics: GET /api/whatsapp/status (login testuser/test123) -> expect 9/9 checks PASS, ready_to_send=true
+- Sync real templates: POST /api/whatsapp/templates/sync -> 14 approved (hello_world has 0 vars; others 1-4 vars, language en_US)
+- Restart tunnel if container restarts:
+  nohup ngrok http 8001 --url=https://shily-orthopneic-shawnna.ngrok-free.dev --log=stdout > /tmp/ngrok.log 2>&1 &

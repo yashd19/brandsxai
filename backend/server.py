@@ -2380,6 +2380,14 @@ def wa_config():
         "verify_token": os.environ.get("WEBHOOK_VERIFY_TOKEN", "").strip(),
     }
 
+def wa_verify_tokens():
+    """All accepted webhook verify tokens (supports both env var names)."""
+    toks = [
+        os.environ.get("WEBHOOK_VERIFY_TOKEN", "").strip(),
+        os.environ.get("WHATSAPP_VERIFY_TOKEN", "").strip(),
+    ]
+    return [t for t in toks if t]
+
 def wa_is_live():
     c = wa_config()
     return bool(c["phone_number_id"] and c["token"])
@@ -2684,10 +2692,18 @@ async def wa_list_templates(current_user: dict = Depends(get_current_user)):
     if not current_user or current_user.get('type') == 'admin':
         raise HTTPException(status_code=403, detail="User access required")
     brand_id = current_user.get('brand_id')
+    # When connected to a real WABA, only Meta-approved templates are sendable.
+    # Prefer those so the UI never offers a template Meta will reject (error 132001).
+    if wa_is_live():
+        meta_tpls = await mongo_db.brandsxai_wa_templates.find(
+            {"brand_id": brand_id, "source": "meta", "status": "APPROVED"}, {"_id": 0}
+        ).to_list(200)
+        if meta_tpls:
+            return {"templates": meta_tpls, "source": "meta", "live_mode": True}
     tpls = await mongo_db.brandsxai_wa_templates.find(
         {"$or": [{"brand_id": None}, {"brand_id": brand_id}]}, {"_id": 0}
     ).to_list(100)
-    return {"templates": tpls}
+    return {"templates": tpls, "source": "local", "live_mode": wa_is_live()}
 
 @api_router.post("/whatsapp/templates")
 async def wa_create_template(req: WATemplateCreate, current_user: dict = Depends(get_current_user)):
@@ -2699,6 +2715,90 @@ async def wa_create_template(req: WATemplateCreate, current_user: dict = Depends
     await mongo_db.brandsxai_wa_templates.insert_one(tpl)
     tpl.pop("_id", None)
     return tpl
+
+@api_router.post("/whatsapp/templates/sync")
+async def wa_sync_templates(current_user: dict = Depends(get_current_user)):
+    """Pull the REAL approved templates from the connected Meta WABA into the portal.
+
+    Meta rejects any template name/language that is not approved on the WABA
+    (error 132001), so the portal must offer exactly what Meta has - including the
+    exact language code (e.g. en_US, not en) and the correct number of {{n}} variables.
+    """
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    brand_id = current_user.get('brand_id')
+    c = wa_config()
+    waba = (os.environ.get("WHATSAPP_WABA_ID", "") or "").strip()
+    if not wa_is_live() or not waba:
+        raise HTTPException(status_code=400, detail="WhatsApp not configured (need META_ACCESS_TOKEN + WHATSAPP_WABA_ID)")
+
+    import httpx
+    url = f"https://graph.facebook.com/{c['version']}/{waba}/message_templates"
+    headers = {"Authorization": f"Bearer {c['token']}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(url, headers=headers,
+                             params={"fields": "name,status,category,language,components", "limit": 200})
+    if r.is_error:
+        err = (r.json() or {}).get("error", {})
+        logger.error(f"WA template sync error: {r.status_code} {r.text[:300]}")
+        raise HTTPException(status_code=502, detail={"meta_status": r.status_code, "meta_error": err})
+
+    now = datetime.now(timezone.utc).isoformat()
+    synced, skipped = [], 0
+    for t in (r.json() or {}).get("data", []):
+        if t.get("status") != "APPROVED":
+            skipped += 1
+            continue
+        body_text, header_text, footer_text = "", "", ""
+        example = []
+        for comp in t.get("components", []) or []:
+            ctype = (comp.get("type") or "").upper()
+            if ctype == "BODY":
+                body_text = comp.get("text") or ""
+                ex = (comp.get("example") or {}).get("body_text") or []
+                if ex and isinstance(ex[0], list):
+                    example = ex[0]
+            elif ctype == "HEADER" and (comp.get("format") or "").upper() == "TEXT":
+                header_text = comp.get("text") or ""
+            elif ctype == "FOOTER":
+                footer_text = comp.get("text") or ""
+        # {{1}}, {{2}} ... in order of appearance, de-duplicated
+        nums, seen = [], set()
+        for m in re.findall(r"\{\{\s*(\d+)\s*\}\}", body_text):
+            if m not in seen:
+                seen.add(m)
+                nums.append(m)
+        # Human-readable labels for the {{n}} placeholders, using Meta's own examples as hints
+        variables = []
+        for i, n in enumerate(nums):
+            hint = example[i] if i < len(example) else ""
+            variables.append(f"Variable {n} (e.g. {hint})" if hint else f"Variable {n}")
+        doc = {
+            "brand_id": brand_id,
+            "name": t.get("name"),
+            "category": t.get("category") or "UTILITY",
+            "language": t.get("language"),          # exact Meta code, e.g. en_US
+            "body": body_text,
+            "header": header_text,
+            "footer": footer_text,
+            "variables": variables,
+            "variable_count": len(variables),
+            "example_values": example,
+            "status": t.get("status"),
+            "source": "meta",
+            "waba_id": waba,
+            "synced_at": now,
+        }
+        await mongo_db.brandsxai_wa_templates.update_one(
+            {"brand_id": brand_id, "name": doc["name"], "language": doc["language"], "source": "meta"},
+            {"$set": doc, "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}},
+            upsert=True,
+        )
+        synced.append({"name": doc["name"], "language": doc["language"],
+                       "variable_count": doc["variable_count"], "category": doc["category"]})
+    logger.info(f"WA template sync: {len(synced)} approved synced, {skipped} non-approved skipped")
+    return {"synced_count": len(synced), "skipped_not_approved": skipped,
+            "waba_id": waba, "templates": synced}
 
 # -------- Conversation endpoints --------
 @api_router.get("/whatsapp/conversations")
@@ -3042,21 +3142,20 @@ async def wa_book_appointment(conv_id: str, req: WAAppointmentCreate, current_us
 
 # -------- Connection diagnostics (validates Meta credentials live) --------
 def _wa_token_shape(tok: str) -> dict:
-    """Heuristics that catch the common copy-paste corruption of Meta tokens."""
+    """Surface-level shape info for the access token.
+
+    NOTE: do NOT infer corruption from the absence of '_' / '-'. Meta system-user
+    tokens legitimately contain none. Validity is decided only by the live Graph
+    API call below.
+    """
     if not tok:
         return {"present": False}
-    base64url_ok = bool(re.fullmatch(r"[A-Za-z0-9_\-]+", tok))
-    looks_mangled = tok.count("_") == 0 and tok.count("-") == 0 and len(tok) > 100
     return {
         "present": True,
         "length": len(tok),
         "prefix": tok[:8],
         "starts_with_EAA": tok.startswith("EAA"),
-        "underscores": tok.count("_"),
-        "hyphens": tok.count("-"),
-        "charset_valid_base64url": base64url_ok,
-        # A genuine Meta token of this length virtually always contains '_' and/or '-'
-        "looks_copy_paste_mangled": looks_mangled,
+        "charset_valid_base64url": bool(re.fullmatch(r"[A-Za-z0-9_\-]+", tok)),
     }
 
 
@@ -3114,10 +3213,9 @@ async def wa_status(current_user: dict = Depends(get_current_user)):
          "A wrong value makes Meta's real webhooks fail signature checks with 403."
          if not result["config"]["app_secret"]["valid_format"] else "")
     _chk("verify_token_set", bool(c["verify_token"]), "Set WEBHOOK_VERIFY_TOKEN" if not c["verify_token"] else "")
-    _chk("token_shape", not result["config"]["access_token"].get("looks_copy_paste_mangled", False),
-         "Token contains no '_' or '-' characters, which is the classic sign of a corrupted "
-         "copy-paste. Re-copy it using the Copy button in WhatsApp > API Setup."
-         if result["config"]["access_token"].get("looks_copy_paste_mangled") else "")
+    _chk("token_charset", result["config"]["access_token"].get("charset_valid_base64url", False),
+         "Token contains characters outside the base64url alphabet - it was likely truncated or "
+         "mangled in transit." if not result["config"]["access_token"].get("charset_valid_base64url") else "")
 
     if not wa_is_live():
         result["errors"].append("Not configured - running in SIMULATION mode.")
@@ -3148,8 +3246,9 @@ async def wa_status(current_user: dict = Depends(get_current_user)):
                 if err.get("code") == 190:
                     msg = (err.get("message") or "").lower()
                     if "decrypted" in msg or "malformed" in msg:
-                        hint = ("Token is corrupted/garbled (not merely expired). Re-copy it with the Copy "
-                                "button from WhatsApp > API Setup, or generate a permanent System User token.")
+                        hint = ("Token is malformed or revoked. Generate a fresh permanent System User "
+                                "token (Business Settings > System Users) with whatsapp_business_messaging "
+                                "+ whatsapp_business_management scopes.")
                     elif "expired" in msg:
                         hint = "Token has expired. Temporary tokens last 24h - generate a System User token."
                     else:
@@ -3227,8 +3326,13 @@ async def wa_webhook_verify(
 ):
     import hmac as _hmac
     c = wa_config()
-    if hub_mode == "subscribe" and c["verify_token"] and _hmac.compare_digest(hub_verify_token or "", c["verify_token"]):
+    accepted = wa_verify_tokens()
+    if hub_mode == "subscribe" and accepted and any(
+        _hmac.compare_digest(hub_verify_token or "", t) for t in accepted
+    ):
+        logger.info("WA webhook verified successfully")
         return PlainTextResponse(content=hub_challenge or "")
+    logger.warning(f"WA webhook verification FAILED (mode={hub_mode}, supplied_token_len={len(hub_verify_token or '')})")
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 @api_router.post("/whatsapp/webhook")

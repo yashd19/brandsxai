@@ -401,3 +401,34 @@ agent_communication:
 agent_communication:
     - agent: "main"
       message: "No testing-agent run requested for this change yet. Added GET /api/whatsapp/status (diagnostics). Outbound Meta sending is blocked by an invalid/corrupted user-supplied META_ACCESS_TOKEN (Meta 401 code 190 'could not be decrypted'); app secret and verify token are now correct and webhook signature validation is verified working. Do NOT attempt to 'fix' the token in code - it must be re-copied by the user from the Meta dashboard."
+
+  - task: "WhatsApp AI - LIVE Meta send VERIFIED + template sync from WABA"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "NEW WORKING CREDENTIALS (2nd set) - fully validated live against Graph API v22.0. Business 'Swad Mania', display_phone_number +1 551-550-6716, phone_number_id 1236101482916191, WABA 971659015904015, app 'SWAD MANIA LLAC' (1565083148587185). Token type SYSTEM_USER, expires_at=0 (NEVER EXPIRES), scopes business_management + whatsapp_business_management + whatsapp_business_messaging. quality_rating GREEN, platform CLOUD_API, throughput STANDARD. NOTE code_verification_status=EXPIRED (does not block sending). META_APP_SECRET=d04f21b2f00b198c88bfb07eb95b3fe6 (32-hex valid). GET /api/whatsapp/status returns ALL 9 CHECKS PASS, token_valid=true, ready_to_send=true."
+        - working: true
+          agent: "main"
+          comment: "LIVE OUTBOUND SEND VERIFIED (real message, not simulated). POST /api/whatsapp/conversations with template hello_world/en_US to 12012688622 returned HTTP 200 with message.simulated=FALSE, status='sent', and a real Meta id wamid.HBgLMTIwMTI2ODg2MjIVAgARGBIxQzNBQ0JBMEFGREUyRkUzNkYA. Conversation + message persisted, stage=Contacted, sender_type=bot, msg_type=template."
+        - working: true
+          agent: "main"
+          comment: "NGROK TUNNEL LIVE from this container: https://shily-orthopneic-shawnna.ngrok-free.dev -> http://localhost:8001 (agent v3.39.11, started with --url=). Earlier ERR_NGROK_108 resolved after the user stopped 2 of their 3 agent sessions. Webhook verified THROUGH the ngrok domain exactly as Meta would call it: correct verify token -> 200 + challenge echo; wrong token -> 403. IMPORTANT: the tunnel is a background process in this container - if the container restarts, re-run: nohup ngrok http 8001 --url=https://shily-orthopneic-shawnna.ngrok-free.dev --log=stdout > /tmp/ngrok.log 2>&1 &"
+        - working: true
+          agent: "main"
+          comment: "BUG FOUND AND FIXED - template mismatch. The portal's 6 seeded demo templates (welcome_offer, festive_offer, ...) do NOT exist on this WABA, and the app defaulted to language 'en' while Meta has them as 'en_US'. Sending any of them would have failed with Meta error 132001 (template name does not exist). FIX: new endpoint POST /api/whatsapp/templates/sync pulls the real APPROVED templates from the WABA and upserts them (exact language code, parsed BODY/HEADER/FOOTER text, {{n}} variable count, example values, status, source='meta'). GET /api/whatsapp/templates now returns ONLY the Meta-synced APPROVED templates when live_mode is true, so the UI can never offer an unsendable template. Synced 14/14 approved: maintenance_check_in(1 var), owner_alert_urgent(1), owner_alert_general(1), tenant_welcome(2), maintenance_followup_check(2), maintenance_resolved(2), maintenance_visit_arrival(3), maintenance_visit_scheduled(4), rent_reminder_upcoming(3), rent_extension_declined(2), rent_extension_approved(4), rent_payment_confirmed(3), rent_reminder_overdue(3), hello_world(0)."
+        - working: true
+          agent: "main"
+          comment: "SELF-CORRECTION: my earlier 'token looks copy-paste mangled' heuristic (zero '_' or '-' chars) was a FALSE POSITIVE - this working SYSTEM_USER token also has zero '_' and '-'. The first token was simply invalid/revoked, not mangled. Removed that heuristic from /api/whatsapp/status and replaced it with a base64url charset check; validity is now decided only by the live Graph API call. Also: webhook verify now accepts EITHER WEBHOOK_VERIFY_TOKEN or WHATSAPP_VERIFY_TOKEN (user supplied two different values), and logs success/failure."
+        - working: "NA"
+          agent: "main"
+          comment: "PENDING USER ACTION: webhook not yet registered in the Meta dashboard, so inbound messages and delivery/read status ticks cannot be observed yet. Outbound message status stays 'sent' until Meta posts statuses (message status CANNOT be polled via the Graph API - webhooks are the only source). User must add callback https://shily-orthopneic-shawnna.ngrok-free.dev/api/whatsapp/webhook with verify token brandsxai_wa_verify_7bK9mQ2xP4 and subscribe to the 'messages' field, then reply from +1 201 268 8622."
+
+agent_communication:
+    - agent: "main"
+      message: "Live Meta integration is now WORKING with the 2nd credential set - real outbound send confirmed (simulated=false, real wamid). Added POST /api/whatsapp/templates/sync and made GET /api/whatsapp/templates return only Meta-approved templates in live mode. No testing-agent run requested yet; all verification above was done directly against Graph API and through the live ngrok domain. Remaining step is user-side webhook registration in the Meta dashboard to prove inbound + delivery ticks."
