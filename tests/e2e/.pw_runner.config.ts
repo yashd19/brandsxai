@@ -11,7 +11,7 @@ export default defineConfig({
     ['json', { outputFile: '/root/.emergent/automation_output/20260316_005717/results.json' }],
   ],
   use: {
-    baseURL: 'https://whatsapp-lead-hub-8.preview.emergentagent.com',
+    baseURL: 'https://wa-business-flow.preview.emergentagent.com',
     screenshot: 'only-on-failure',
     trace: 'off',
     headless: true,

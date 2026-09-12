@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 # Configuration
-BASE_URL = "https://whatsapp-lead-hub-8.preview.emergentagent.com"
+BASE_URL = "https://wa-business-flow.preview.emergentagent.com"
 USERNAME = "testuser"
 PASSWORD = "test123"
 

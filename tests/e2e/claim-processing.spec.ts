@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = 'https://whatsapp-lead-hub-8.preview.emergentagent.com';
+const BASE_URL = 'https://wa-business-flow.preview.emergentagent.com';
 
 test.describe('Claim Processing Feature', () => {
   test.beforeEach(async ({ page }) => {

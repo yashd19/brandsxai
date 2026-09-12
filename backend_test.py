@@ -11,7 +11,7 @@ from statistics import mean
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configuration
-BASE_URL = "https://whatsapp-lead-hub-8.preview.emergentagent.com/api"
+BASE_URL = "https://wa-business-flow.preview.emergentagent.com/api"
 USERNAME = "testuser"
 PASSWORD = "test123"
 
