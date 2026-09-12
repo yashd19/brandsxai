@@ -461,25 +461,27 @@ async def init_mongodb_collections():
         # Seed default WhatsApp message templates (global, brand_id=None)
         wa_tpl_count = await mongo_db.brandsxai_wa_templates.count_documents({})
         if wa_tpl_count == 0:
+            # Seeded only on a fresh install, and only used for simulation / as a fallback:
+            # when a real WABA is connected the UI prefers Meta-APPROVED templates instead.
             default_templates = [
                 {"id": str(uuid.uuid4()), "brand_id": None, "name": "welcome_offer", "category": "MARKETING", "language": "en",
-                 "body": "Hi {{1}}, thanks for your interest in the {{2}}! This is {{3}} from BrandX Motors. We have exclusive offers this month. Reply YES to know more.",
-                 "variables": ["Customer Name", "Model", "Agent Name"], "created_at": datetime.now(timezone.utc).isoformat()},
-                {"id": str(uuid.uuid4()), "brand_id": None, "name": "test_drive_invite", "category": "MARKETING", "language": "en",
-                 "body": "Hi {{1}}, would you like to book a FREE test drive of the {{2}} at our showroom? Reply YES and we'll arrange a convenient slot for you.",
-                 "variables": ["Customer Name", "Model"], "created_at": datetime.now(timezone.utc).isoformat()},
-                {"id": str(uuid.uuid4()), "brand_id": None, "name": "festive_offer", "category": "MARKETING", "language": "en",
-                 "body": "Hi {{1}}, celebrate this festive season with a special discount on the {{2}}! Limited-period offer. Reply YES to grab it before it ends.",
-                 "variables": ["Customer Name", "Model"], "created_at": datetime.now(timezone.utc).isoformat()},
-                {"id": str(uuid.uuid4()), "brand_id": None, "name": "price_quote_followup", "category": "UTILITY", "language": "en",
-                 "body": "Hi {{1}}, here is the best price we can offer for the {{2}} you enquired about. Shall we help you take the next step?",
-                 "variables": ["Customer Name", "Model"], "created_at": datetime.now(timezone.utc).isoformat()},
-                {"id": str(uuid.uuid4()), "brand_id": None, "name": "appointment_confirmation", "category": "UTILITY", "language": "en",
-                 "body": "Hi {{1}}, your showroom visit is confirmed for {{2}} at {{3}}. We look forward to welcoming you at BrandX Motors!",
-                 "variables": ["Customer Name", "Date", "Time"], "created_at": datetime.now(timezone.utc).isoformat()},
-                {"id": str(uuid.uuid4()), "brand_id": None, "name": "reengagement", "category": "MARKETING", "language": "en",
-                 "body": "Hi {{1}}, still thinking about the {{2}}? Our team would love to help you decide. Reply here and we'll assist you right away.",
-                 "variables": ["Customer Name", "Model"], "created_at": datetime.now(timezone.utc).isoformat()},
+                 "body": "Hi {{1}}, this is {{2}} from Manohar Jewellers. Our Grand Chain & Bangles Fest is on 17-20 September - flat 50% off making charges on gold chains and bangles, making from 2.99%. Reply YES to know more.",
+                 "variables": ["Customer Name", "Agent Name"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "fest_invite", "category": "MARKETING", "language": "en",
+                 "body": "Hi {{1}}, our biggest ever chain and bangles collection - Dubai, Italian and Singapore designs - is on display 17-20 September, 11 AM to 9 PM. Walk in at Sojti Gate, C Road or Satsang Bhawan, no booking needed.",
+                 "variables": ["Customer Name"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "making_charges_offer", "category": "MARKETING", "language": "en",
+                 "body": "Hi {{1}}, for the first time in Jodhpur our making charges start from just 2.99% on gold chains and bangles - that is flat 50% off making, only from 17 to 20 September. Reply YES and I'll share designs.",
+                 "variables": ["Customer Name"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "design_shortlist_followup", "category": "UTILITY", "language": "en",
+                 "body": "Hi {{1}}, sharing a few {{2}} designs from our fest collection. Let me know which one you like and I'll keep it ready for you to see.",
+                 "variables": ["Customer Name", "Chains/Bangles"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "visit_confirmation", "category": "UTILITY", "language": "en",
+                 "body": "Hi {{1}}, we have noted your visit for {{2}}. No booking needed - just walk in between 11 AM and 9 PM at our {{3}} showroom. See you at Manohar Jewellers!",
+                 "variables": ["Customer Name", "Date", "Showroom"], "created_at": datetime.now(timezone.utc).isoformat()},
+                {"id": str(uuid.uuid4()), "brand_id": None, "name": "last_days_reminder", "category": "MARKETING", "language": "en",
+                 "body": "Hi {{1}}, just a reminder that our Chain & Bangles Fest ends on 20 September. After that, making charges go back to full price. Do visit us before then!",
+                 "variables": ["Customer Name"], "created_at": datetime.now(timezone.utc).isoformat()},
             ]
             await mongo_db.brandsxai_wa_templates.insert_many(default_templates)
 
@@ -2668,7 +2670,7 @@ async def _wa_auto_open_from_opportunity(opportunity_id: int, phone: str, brand_
 
         opp = await mongo_db.brandsxai_opportunities.find_one({"id": opportunity_id}, {"_id": 0}) or {}
         lead_name = opp.get("name") or "there"
-        product = opp.get("business_name") or opp.get("notes") or "our latest models"
+        product = opp.get("business_name") or opp.get("notes") or ""
         campaign_name = None
         cid = opp.get("campaign_id")
         if cid:
@@ -2676,9 +2678,10 @@ async def _wa_auto_open_from_opportunity(opportunity_id: int, phone: str, brand_
             campaign_name = camp.get("name") if camp else None
 
         tpl = await mongo_db.brandsxai_wa_templates.find_one({"name": "welcome_offer"}, {"_id": 0})
-        body_vars = [lead_name, str(product), "our team"]
+        body_vars = [lead_name, agent_username or "our team"]
         rendered = (tpl.get("body") if tpl else
-                    "Hi {{1}}, thanks for your interest in the {{2}}! This is {{3}} from BrandX Motors. Reply YES to know more.")
+                    f"Hi {{{{1}}}}, this is {{{{2}}}} from {WA_BRAND_NAME}. Our Grand Chain & Bangles Fest is on "
+                    "17-20 September - flat 50% off making charges on gold chains and bangles. Reply YES to know more.")
         for i, v in enumerate(body_vars, start=1):
             rendered = rendered.replace(f"{{{{{i}}}}}", v)
 
@@ -2688,7 +2691,7 @@ async def _wa_auto_open_from_opportunity(opportunity_id: int, phone: str, brand_
         conv = {
             "id": conv_id, "brand_id": brand_id, "campaign_id": cid, "campaign_name": campaign_name,
             "opportunity_id": opportunity_id, "lead_name": lead_name, "lead_phone": digits,
-            "product_interest": (str(product) if product != "our latest models" else None),
+            "product_interest": (str(product).strip() or None),
             "stage": "Contacted", "status": "open", "unread_count": 0,
             "last_message": rendered[:120], "last_message_at": now.isoformat(),
             "assigned_agent": agent_username, "intent": None, "temperature": "warm",
@@ -2712,6 +2715,51 @@ async def _wa_auto_open_from_opportunity(opportunity_id: int, phone: str, brand_
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
+
+# ==================== SALES AI: BRAND + EVENT BRIEF ====================
+# SINGLE SOURCE OF TRUTH for every WhatsApp AI prompt (strategist ideas, reply
+# suggestions, draft-from-idea, summary). When the offer or the dates change, edit
+# ONLY this block - all four prompts read it through _wa_context_block().
+
+WA_BRAND_NAME = os.environ.get("WA_BRAND_NAME", "Manohar Jewellers")
+
+# The two failure modes this brief is written to prevent:
+#   1. The AI presenting "flat 50% off" and "from 2.99%" as two stacked discounts.
+#      They are ONE deal - 2.99% is what the 50% off works out to.
+#   2. The AI implying the GOLD RATE is discounted. Only making charges are cut.
+WA_EVENT_BRIEF = """EVENT BRIEF - these are the ONLY facts. Never state an offer that is not here.
+
+Business: Manohar Jewellers, Jodhpur - premium jeweller with three showrooms.
+Event: Grand Chain & Bangles Fest.
+Dates: 17 to 20 September - four days only. Before the 17th, making charges are full price.
+Timing: 11 AM to 9 PM on all four days.
+Showrooms: Sojti Gate, C Road, and Satsang Bhawan.
+Entry: walk in directly. There is NO booking, NO appointment and NO slot to reserve.
+
+THE OFFER (one single deal - never split it into two):
+- Flat 50% off making charges on gold chains and bangles.
+- After that 50% off, making starts from 2.99%.
+- "Flat 50% off" and "from 2.99%" are the SAME deal: 2.99% is what the 50% off comes to.
+  NEVER present them as two stacked discounts, and never say "50% off PLUS 2.99%".
+- The gold rate stays the normal market rate. Only the jeweller's own making charges are
+  cut. Never imply any discount on the gold itself.
+- This is the first time Manohar Jewellers has brought making charges this low in Jodhpur.
+
+Collection: their biggest ever chain and bangles collection - Dubai, Italian and Singapore
+designs - available at all three showrooms.
+
+SCOPE LIMIT: the 50% off / from-2.99% making applies ONLY to gold chains and bangles. All
+other jewellery is on display to see, but NOT at fest making rates."""
+
+# Everything a rep must never promise. The levers in the strategist prompt are deliberately
+# limited to what the brief actually supports; this list closes the remaining gaps.
+WA_OFFER_GUARDRAILS = """NOT AVAILABLE - never offer, hint at or invent any of these:
+zero/nil making charges, any discount on the gold rate, old-gold exchange schemes, free gold
+coins or gifts, EMI or 0% finance, rate lock or pre-booking, home delivery, private or VIP
+slots, appointments, stylist consultations, referral gifts, extended dates, or a fest discount
+on any jewellery other than gold chains and bangles.
+If the customer asks for something outside the brief, offer to check with the store instead of
+promising it."""
 
 async def _wa_build_transcript(conv_id: str, limit: int = 20) -> str:
     msgs = await mongo_db.brandsxai_wa_messages.find({"conversation_id": conv_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
@@ -2754,12 +2802,16 @@ async def _wa_claude_json(system_message: str, user_text: str, session_id: str) 
         return {}
 
 def _wa_context_block(conv: dict) -> str:
+    """Lead context + the authoritative event brief, injected into every WhatsApp AI prompt."""
     return (
         f"Campaign: {conv.get('campaign_name') or 'N/A'}\n"
         f"Customer name: {conv.get('lead_name')}\n"
-        f"Product of interest: {conv.get('product_interest') or 'N/A'}\n"
+        f"Interested in: {conv.get('product_interest') or 'not stated yet'}\n"
         f"Current stage: {conv.get('stage') or 'N/A'}\n"
-        f"Business: BrandX Motors (goal: convert this warm lead into a showroom visit / test drive)."
+        f"Current temperature: {conv.get('temperature') or 'unknown'}\n"
+        f"Business: {WA_BRAND_NAME} (goal: get this lead to walk into one of the three "
+        f"showrooms during 17-20 September and buy).\n\n"
+        f"{WA_EVENT_BRIEF}\n\n{WA_OFFER_GUARDRAILS}"
     )
 
 # -------- Template endpoints --------
@@ -3125,16 +3177,46 @@ async def wa_suggestions(conv_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Conversation not found")
     transcript = await _wa_build_transcript(conv_id)
     system = (
-        "You are an expert WhatsApp sales strategist for BrandX Motors, a car dealership. "
-        "A human sales rep is chatting with a warm lead. You return TWO things:\n"
-        "1) creative_ideas: 2-3 short STRATEGIC next-step ideas / creative routes (NOT messages) that could open more "
-        "opportunities and move the lead toward a showroom visit or purchase. Think like a sales coach: e.g. offer a "
-        "limited-time festive discount, invite to a weekend test-drive event, share a short video walkthrough, offer free "
-        "home pickup/drop for a test drive, propose an exchange valuation, loop in a finance/EMI option. Each idea must be "
-        "a crisp phrase (max ~10 words), action-oriented, tailored to this conversation.\n"
-        "2) suggestions: exactly 3 ready-to-send REPLY messages the rep can send right now, short (1-2 sentences), warm, "
-        "natural like a real person on WhatsApp, no markdown, minimal emojis, each with a different angle "
-        "(answer a question, handle an objection, propose a showroom visit).\n"
+        f"You are the Head of Growth for {WA_BRAND_NAME}, a premium jeweller in Jodhpur. You have run "
+        "jewellery exhibitions that pulled millions of footfalls and you convert WhatsApp conversations at "
+        "3-5x the industry average. A human sales rep is chatting with a lead about our Grand Chain & "
+        "Bangles Fest running 17-20 September.\n\n"
+        "You return TWO things.\n\n"
+        "1) creative_ideas: 2-3 STRATEGIC next moves (NOT messages) that create the highest chance THIS "
+        "specific lead walks into one of our three showrooms during those four days and buys.\n"
+        "Think in this order:\n"
+        "  a. Where is this lead in the pipeline? (Contacted -> Engaged -> Qualified -> Visit Confirmed -> "
+        "Reminded -> Visited -> Purchased / Nurture)\n"
+        "  b. What is their temperature (hot / warm / cold) and the single real reason they might not come?\n"
+        "  c. Which ONE lever best fits that reason:\n"
+        "     - Value lever: flat 50% off making on gold chains and bangles, making from 2.99%, lowest making "
+        "they have ever offered in Jodhpur\n"
+        "     - Occasion lever: wedding, anniversary, birthday, festival gifting, gift for mother/wife\n"
+        "     - Collection lever: biggest ever chain and bangles collection, Dubai / Italian / Singapore designs\n"
+        "     - Convenience lever: walk in any of the four days 11 AM-9 PM, no booking needed, whichever of the "
+        "three showrooms is nearest (Sojti Gate, C Road, Satsang Bhawan)\n"
+        "     - Social lever: bring family along, send a 3-design shortlist to share with spouse/mother\n"
+        "     - Reassurance lever: see and try the pieces in person at an established local showroom before deciding\n"
+        "     - Urgency lever (true, so usable): four days only, 17-20 September; before the 17th making is full price\n"
+        "  d. Prefer moves the rep can execute in the next 5 minutes on WhatsApp (send 3 design photos, confirm "
+        "which day and which showroom they will come to, ask chain vs bangles, ask their gramage or budget range, "
+        "share timings and location).\n\n"
+        "2) suggestions: exactly 3 ready-to-send REPLY messages the rep can send right now - short (1-2 sentences), "
+        "warm, natural like a real person on WhatsApp, no markdown, minimal emojis, each taking a different angle "
+        "(answer their question, handle an objection, invite them to walk in during the fest).\n\n"
+        "RULES:\n"
+        "- Each idea is a crisp, action-oriented phrase, max ~10 words, tailored to THIS conversation - no generic advice.\n"
+        "- No two ideas may use the same lever.\n"
+        "- Never invent an offer that is not in the EVENT BRIEF.\n"
+        "- The offer is ONE deal: flat 50% off making IS the 'making from 2.99%'. Never stack them as two discounts.\n"
+        "- Never imply the gold rate is discounted - only making charges are cut.\n"
+        "- The fest rate covers gold chains and bangles ONLY.\n"
+        "- There are no slots or appointments to book. The commitment to ask for is WHICH DAY and WHICH SHOWROOM "
+        "they will walk into.\n"
+        "- If the lead is cold, ideas must LOWER commitment (e.g. 'send 3 bangle designs, ask which she likes') "
+        "rather than push a visit.\n"
+        "- If the lead is hot, ideas must lock the visit day and protect the sale (confirm day and showroom, ask "
+        "which designs to have ready to show).\n\n"
         "Also classify the lead's buying intent as one of: hot, warm, cold.\n"
         "Respond ONLY with strict JSON: {\"creative_ideas\":[\"...\",\"...\"],\"suggestions\":[\"...\",\"...\",\"...\"],"
         "\"intent\":\"short phrase\",\"temperature\":\"hot|warm|cold\"}"
@@ -3168,9 +3250,14 @@ async def wa_draft_from_idea(conv_id: str, req: WADraftFromIdea, current_user: d
         raise HTTPException(status_code=404, detail="Conversation not found")
     transcript = await _wa_build_transcript(conv_id)
     system = (
-        "You are a WhatsApp sales rep for BrandX Motors. Turn the given STRATEGIC IDEA into ONE ready-to-send WhatsApp "
-        "message to the customer: short (1-2 sentences), warm, natural, no markdown, minimal emojis, ending with a gentle "
-        "nudge toward a showroom visit / test drive when it fits. "
+        f"You are a WhatsApp sales rep for {WA_BRAND_NAME}, a premium jeweller in Jodhpur. Turn the given "
+        "STRATEGIC IDEA into ONE ready-to-send WhatsApp message to the customer: short (1-2 sentences), warm, "
+        "natural, no markdown, minimal emojis, ending with a gentle nudge toward walking into one of our three "
+        "showrooms during the Grand Chain & Bangles Fest (17-20 September, 11 AM-9 PM) when it fits.\n"
+        "Stick strictly to the EVENT BRIEF in the context - never invent an offer. The deal is ONE thing: flat "
+        "50% off making charges on gold chains and bangles, which is what 'making from 2.99%' means - never "
+        "present them as two separate discounts. Never suggest the gold rate is discounted. Never ask them to "
+        "book a slot or appointment; they can simply walk in.\n"
         "Respond ONLY with strict JSON: {\"message\":\"...\"}"
     )
     user_text = (
@@ -3190,7 +3277,11 @@ async def wa_summary(conv_id: str, current_user: dict = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Conversation not found")
     transcript = await _wa_build_transcript(conv_id, limit=40)
     system = (
-        "You analyze a WhatsApp sales conversation for a car dealership. "
+        f"You analyze a WhatsApp sales conversation for {WA_BRAND_NAME}, a premium jeweller running a Grand "
+        "Chain & Bangles Fest from 17-20 September. Judge how close this lead is to walking into a showroom "
+        "during the fest and buying. The next_step must be one concrete action the rep can take on WhatsApp "
+        "now, consistent with the EVENT BRIEF - no invented offers, and no slot/appointment booking (the fest "
+        "is walk-in).\n"
         "Return ONLY strict JSON: {\"summary\":\"2-3 sentence summary\",\"next_step\":\"one recommended next action\",\"temperature\":\"hot|warm|cold\"}"
     )
     user_text = f"CONTEXT:\n{_wa_context_block(conv)}\n\nCONVERSATION:\n{transcript}"
@@ -3213,8 +3304,13 @@ async def wa_book_appointment(conv_id: str, req: WAAppointmentCreate, current_us
         "created_at": now.isoformat()
     }
     await mongo_db.brandsxai_wa_appointments.insert_one(appt)
-    # Send a confirmation message + move stage to Visit Booked
-    confirm = f"Great! Your showroom visit is confirmed for {req.date} at {req.time}. We look forward to welcoming you at BrandX Motors!"
+    # Send a confirmation message + move stage to Visit Confirmed.
+    # The fest is walk-in, so this is not a reserved slot - it records the day the customer
+    # said they would come so the rep can remind them.
+    confirm = (
+        f"Wonderful! We have noted your visit for {req.date}, around {req.time}. No booking needed - "
+        f"just walk in any time between 11 AM and 9 PM. See you at {WA_BRAND_NAME}!"
+    )
     send_res = await wa_send_text(conv["lead_phone"], confirm)
     msg = {
         "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "outbound",
@@ -3224,7 +3320,7 @@ async def wa_book_appointment(conv_id: str, req: WAAppointmentCreate, current_us
     }
     await mongo_db.brandsxai_wa_messages.insert_one(msg)
     await mongo_db.brandsxai_wa_conversations.update_one(
-        {"id": conv_id}, {"$set": {"stage": "Visit Booked", "last_message": confirm[:120],
+        {"id": conv_id}, {"$set": {"stage": "Visit Confirmed", "last_message": confirm[:120],
                                     "last_message_at": now.isoformat(), "updated_at": now.isoformat()}}
     )
     appt.pop("_id", None)

@@ -678,7 +678,7 @@ const WhatsAppAI = () => {
           <div className="wa-modal sm" onClick={e => e.stopPropagation()}>
             <div className="wa-modal-head"><h3>Simulate customer reply</h3><button onClick={() => { setShowSim(false); setSimMedia(null); }}><X size={18} /></button></div>
             <p className="wa-modal-hint">Demo only — mimics an incoming WhatsApp message (text and/or a photo/video) from the customer so you can see it in the portal and get AI suggestions.</p>
-            <textarea autoFocus value={simText} onChange={e => setSimText(e.target.value)} placeholder='e.g. "Y" or "Here is my current car" (optional if attaching media)' />
+            <textarea autoFocus value={simText} onChange={e => setSimText(e.target.value)} placeholder='e.g. "Y" or "Show me bangle designs" (optional if attaching media)' />
             <div className="wa-sim-attach">
               <label className="wa-btn ghost">
                 {simUploading ? 'Uploading…' : (simMedia ? `Attached: ${simMedia.kind}` : 'Attach photo / video')}
@@ -775,7 +775,7 @@ const NewConversationModal = ({ onClose, onCreated }) => {
           </div>
           <div className="wa-field-row">
             <div className="wa-field"><label>Campaign (optional)</label><input value={campaign} onChange={e => setCampaign(e.target.value)} placeholder="e.g. Diwali Offer 2026" /></div>
-            <div className="wa-field"><label>Product of interest (optional)</label><input value={product} onChange={e => setProduct(e.target.value)} placeholder="e.g. BrandX SUV X7" /></div>
+            <div className="wa-field"><label>Product of interest (optional)</label><input value={product} onChange={e => setProduct(e.target.value)} placeholder="e.g. Gold chain, 20g bangles" /></div>
           </div>
           <div className="wa-field">
             <label>Template message (first message must be an approved template)</label>
@@ -831,12 +831,12 @@ const BookVisitModal = ({ onClose, onBooked, convId }) => {
     <div className="wa-modal-overlay" onClick={onClose}>
       <div className="wa-modal sm" onClick={e => e.stopPropagation()}>
         <div className="wa-modal-head"><h3><Calendar size={18} /> Book showroom visit</h3><button onClick={onClose}><X size={18} /></button></div>
-        <p className="wa-modal-hint">This confirms the visit, sends a confirmation message to the customer, and moves the lead to “Visit Booked”.</p>
+        <p className="wa-modal-hint">This notes the day the customer plans to walk in, sends them a confirmation message, and moves the lead to “Visit Confirmed”. The fest is walk-in, so no slot is reserved.</p>
         <div className="wa-field-row">
           <div className="wa-field"><label>Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
           <div className="wa-field"><label>Time</label><input type="time" value={time} onChange={e => setTime(e.target.value)} /></div>
         </div>
-        <div className="wa-field"><label>Notes (optional)</label><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Interested in test drive" /></div>
+        <div className="wa-field"><label>Notes (optional)</label><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Coming with family, wants bangles" /></div>
         <div className="wa-modal-actions">
           <button className="wa-btn ghost" onClick={onClose}>Cancel</button>
           <button className="wa-btn primary" onClick={submit} disabled={busy || !date || !time}>{busy ? 'Booking…' : 'Confirm visit'}</button>
