@@ -2625,7 +2625,9 @@ async def _wa_auto_open_from_opportunity(opportunity_id: int, phone: str, brand_
         return None
 
 # -------- AI (Claude) helpers --------
-CLAUDE_MODEL = "claude-sonnet-4-6"
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_VERSION = "2023-06-01"
 
 async def _wa_build_transcript(conv_id: str, limit: int = 20) -> str:
     msgs = await mongo_db.brandsxai_wa_messages.find({"conversation_id": conv_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
@@ -2637,13 +2639,23 @@ async def _wa_build_transcript(conv_id: str, limit: int = 20) -> str:
     return "\n".join(lines)
 
 async def _wa_claude_json(system_message: str, user_text: str, session_id: str) -> dict:
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    key = os.environ.get("EMERGENT_LLM_KEY")
+    import httpx
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not key:
         raise HTTPException(status_code=500, detail="AI service not configured")
-    chat = LlmChat(api_key=key, session_id=session_id, system_message=system_message).with_model("anthropic", CLAUDE_MODEL)
-    resp = await chat.send_message(UserMessage(text=user_text))
-    text = resp if isinstance(resp, str) else getattr(resp, "content", str(resp))
+    headers = {"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"}
+    payload = {
+        "model": CLAUDE_MODEL,
+        "max_tokens": 1024,
+        "system": system_message,
+        "messages": [{"role": "user", "content": user_text}],
+    }
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.post(ANTHROPIC_API_URL, headers=headers, json=payload)
+    if r.is_error:
+        logger.error(f"Anthropic API error ({session_id}): {r.status_code} {r.text[:300]}")
+        raise HTTPException(status_code=502, detail="AI service unavailable")
+    text = "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
     # strip markdown fences / extract JSON object
     cleaned = text.strip()
     if cleaned.startswith("```"):
