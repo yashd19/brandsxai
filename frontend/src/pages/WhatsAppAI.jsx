@@ -96,6 +96,7 @@ function initials(name = '') {
 const WhatsAppAI = () => {
   const [conversations, setConversations] = useState([]);
   const [liveMode, setLiveMode] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [activeId, setActiveId] = useState(null);
   const [activeConv, setActiveConv] = useState(null);
   const [loadingConv, setLoadingConv] = useState(false);
@@ -208,18 +209,73 @@ const WhatsAppAI = () => {
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // poll conversation list every 4s
-  useEffect(() => {
-    const t = setInterval(loadConversations, 4000);
-    return () => clearInterval(t);
-  }, [loadConversations]);
+  const onLiveEvent = useCallback((ev) => {
+    if (!ev || !ev.type) return;
+    loadConversations();
+    if (ev.conversation_id && ev.conversation_id === activeIdRef.current) pollActive();
+  }, [loadConversations, pollActive]);
 
-  // poll active thread every 2.5s
+  // Live inbox stream: a message appears the instant the server records it, no matter who
+  // sent it or where it was sent from. EventSource cannot carry the auth header, so read
+  // the stream off fetch() instead. Polling below stays on as a backstop.
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    let attempt = 0;
+
+    const consume = async () => {
+      while (!cancelled) {
+        try {
+          const res = await fetch(`${API_URL}/api/whatsapp/events`, {
+            headers: { ...authHeaders(), Accept: 'text/event-stream' },
+            signal: controller.signal,
+          });
+          if (!res.ok || !res.body) throw new Error(`stream ${res.status}`);
+          attempt = 0;
+          setStreaming(true);
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          while (!cancelled) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const frames = buffer.split('\n\n');
+            buffer = frames.pop() || '';    // trailing partial frame waits for more bytes
+            for (const frame of frames) {
+              const payload = frame.split('\n')
+                .filter((l) => l.startsWith('data:'))
+                .map((l) => l.slice(5).trim())
+                .join('');
+              if (!payload) continue;       // keepalive comment
+              try { onLiveEvent(JSON.parse(payload)); } catch { /* ignore bad frame */ }
+            }
+          }
+        } catch {
+          if (cancelled) return;
+        }
+        setStreaming(false);
+        attempt = Math.min(attempt + 1, 6);
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
+    };
+
+    consume();
+    return () => { cancelled = true; controller.abort(); };
+  }, [onLiveEvent]);
+
+  // Backstop poll for the thread list — slow while the stream is healthy.
+  useEffect(() => {
+    const t = setInterval(loadConversations, streaming ? 20000 : 4000);
+    return () => clearInterval(t);
+  }, [loadConversations, streaming]);
+
+  // Backstop poll for the open thread — slow while the stream is healthy.
   useEffect(() => {
     if (!activeId) return;
-    const t = setInterval(pollActive, 2500);
+    const t = setInterval(pollActive, streaming ? 15000 : 2500);
     return () => clearInterval(t);
-  }, [activeId, pollActive]);
+  }, [activeId, pollActive, streaming]);
 
   useEffect(() => {
     if (msgEndRef.current) msgEndRef.current.scrollIntoView({ behavior: 'smooth' });

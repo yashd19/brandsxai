@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ReturnDocument
 import os
 import re
 import asyncio
@@ -2341,7 +2342,7 @@ async def export_session_codes(session_id: str, current_user: dict = Depends(get
 # ==================== WHATSAPP AI ====================
 
 from fastapi import Request, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 class WATemplateCreate(BaseModel):
     name: str
@@ -2626,6 +2627,26 @@ async def wa_send_text(to: str, body: str):
     data = r.json()
     return {"simulated": False, "message_id": (data.get("messages") or [{}])[0].get("id")}
 
+# ---- Real-time fan-out to open inboxes (Server-Sent Events) ----
+# Every message path already funnels through _wa_touch_conversation, so publishing from
+# there covers inbound webhooks, portal sends, voice-agent ingest and adopted external
+# sends without each caller having to remember to announce itself.
+WA_EVENT_SUBSCRIBERS: set = set()
+
+
+def wa_publish(event: dict) -> None:
+    """Hand an inbox event to every connected browser. Never raises, never blocks.
+
+    A subscriber that has stopped reading (dead tab, frozen laptop) is dropped rather than
+    allowed to apply backpressure to the webhook that is trying to persist a message.
+    """
+    for q in list(WA_EVENT_SUBSCRIBERS):
+        try:
+            q.put_nowait(event)
+        except asyncio.QueueFull:
+            WA_EVENT_SUBSCRIBERS.discard(q)
+
+
 async def _wa_touch_conversation(conv_id: str, last_message: str, direction: str):
     """Update conversation preview + unread counters + window on new message."""
     now = datetime.now(timezone.utc)
@@ -2638,7 +2659,13 @@ async def _wa_touch_conversation(conv_id: str, last_message: str, direction: str
     ops = {"$set": update}
     if inc:
         ops["$inc"] = inc
-    await mongo_db.brandsxai_wa_conversations.update_one({"id": conv_id}, ops)
+    conv = await mongo_db.brandsxai_wa_conversations.find_one_and_update(
+        {"id": conv_id}, ops, projection={"_id": 0, "brand_id": 1}, return_document=ReturnDocument.AFTER)
+    wa_publish({
+        "type": "message", "conversation_id": conv_id, "direction": direction,
+        "brand_id": (conv or {}).get("brand_id"), "preview": last_message[:120],
+        "at": now.isoformat(),
+    })
 
 # -------- Media storage + chunked upload --------
 WA_MEDIA_DIR = ROOT_DIR / "wa_media"
@@ -3150,6 +3177,41 @@ async def wa_sync_templates(current_user: dict = Depends(get_current_user)):
     return await _wa_sync_templates_from_meta(current_user.get('brand_id'))
 
 # -------- Conversation endpoints --------
+@api_router.get("/whatsapp/events")
+async def wa_events(request: Request, current_user: dict = Depends(get_current_user)):
+    """Live inbox stream. Replaces tight polling so a message shows up the moment it lands."""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    brand_id = current_user.get('brand_id')
+    queue: asyncio.Queue = asyncio.Queue(maxsize=200)
+    WA_EVENT_SUBSCRIBERS.add(queue)
+
+    async def stream():
+        try:
+            # Tell EventSource how fast to come back, and prove the stream is open so the
+            # client can stand its polling backstop down.
+            yield "retry: 3000\n\n"
+            yield f"event: ready\ndata: {json.dumps({'brand_id': brand_id})}\n\n"
+            while not await request.is_disconnected():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=20)
+                except asyncio.TimeoutError:
+                    # Idle streams get culled by ngrok/proxies; a comment keeps it warm.
+                    yield ": keepalive\n\n"
+                    continue
+                if event.get("brand_id") not in (None, brand_id):
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            WA_EVENT_SUBSCRIBERS.discard(queue)
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    })
+
+
 @api_router.get("/whatsapp/conversations")
 async def wa_list_conversations(current_user: dict = Depends(get_current_user)):
     if not current_user or current_user.get('type') == 'admin':
@@ -3331,7 +3393,9 @@ async def wa_simulate_inbound(conv_id: str, req: WASimulateInbound, current_user
 class WAIngestMessage(BaseModel):
     lead_phone: str
     lead_name: Optional[str] = None
-    brand_id: Optional[int] = 1
+    # Left unset on purpose: an explicit default here would win over WA_DEFAULT_BRAND_ID and
+    # file the thread under a brand whose users cannot see it, which looks like message loss.
+    brand_id: Optional[int] = None
     campaign_name: Optional[str] = None
     product_interest: Optional[str] = None
     direction: str = "outbound"          # outbound (business/voice-agent) | inbound (customer)
@@ -3354,7 +3418,8 @@ async def _wa_find_or_create_conv(brand_id, phone, lead_name=None, campaign_name
         "product_interest": product_interest, "stage": "Contacted", "status": "open",
         "unread_count": 0, "last_message": "", "last_message_at": now.isoformat(),
         "assigned_agent": None, "intent": None, "temperature": "warm", "source": source,
-        "window_expires_at": None, "created_at": now.isoformat(), "updated_at": now.isoformat()
+        "window_expires_at": None, **wa_account_ids(),
+        "created_at": now.isoformat(), "updated_at": now.isoformat()
     }
     await mongo_db.brandsxai_wa_conversations.insert_one(conv)
     return conv, True
@@ -3824,8 +3889,72 @@ WA_WEBHOOK_STATS = {
     "last_signature_error_at": None,
     "processed_messages": 0,
     "processed_statuses": 0,
+    "adopted_external_outbound": 0,
     "last_error": None,
 }
+
+WA_EXTERNAL_OUTBOUND_PLACEHOLDER = "[sent outside the portal — WhatsApp does not report the text]"
+
+
+async def _wa_adopt_external_outbound(status: dict, recv_pnid, recv_waba, now):
+    """Create a local row for an outbound message that was sent outside this portal.
+
+    Cloud API status webhooks are the only trace we ever get of a send made from Business
+    Manager, an API client or another system, and they carry no message body, so the row is
+    a placeholder whose purpose is to keep the thread chronologically complete rather than
+    leave a silent gap. Returns None when the recipient cannot be resolved.
+    """
+    phone = _norm_phone(status.get("recipient_id"))
+    wamid = status.get("id")
+    if not phone or not wamid:
+        return None
+    # Same thread resolution as inbound: scoped to the business number that sent it, with a
+    # fallback for threads created before we started stamping the receiving number.
+    conv = await mongo_db.brandsxai_wa_conversations.find_one(
+        {"lead_phone": phone, "wa_phone_number_id": recv_pnid})
+    if not conv and recv_pnid:
+        conv = await mongo_db.brandsxai_wa_conversations.find_one({
+            "lead_phone": phone,
+            "$or": [
+                {"wa_phone_number_id": {"$in": [None, ""]}},
+                {"wa_phone_number_id": {"$exists": False}},
+            ],
+        })
+    if conv:
+        conv_id = conv["id"]
+    else:
+        conv_id = str(uuid.uuid4())
+        await mongo_db.brandsxai_wa_conversations.insert_one({
+            "id": conv_id, "brand_id": wa_default_brand_id(), "lead_name": phone,
+            "lead_phone": phone, "wa_phone_number_id": recv_pnid, "waba_id": recv_waba,
+            "stage": "Contacted", "status": "open", "unread_count": 0,
+            "temperature": "warm", "source": "external_outbound",
+            "created_at": now.isoformat(), "updated_at": now.isoformat(),
+        })
+    # Order the message by when Meta acted on it, not when this webhook happened to arrive.
+    try:
+        created_at = datetime.fromtimestamp(int(status.get("timestamp")), timezone.utc).isoformat()
+    except (TypeError, ValueError):
+        created_at = now.isoformat()
+    # Upsert, because sent/delivered/read for one wamid can arrive concurrently and only the
+    # first of them may create the row.
+    await mongo_db.brandsxai_wa_messages.update_one(
+        {"wa_message_id": wamid},
+        {"$setOnInsert": {
+            "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "outbound",
+            "sender_type": "human", "content": WA_EXTERNAL_OUTBOUND_PLACEHOLDER,
+            "msg_type": "text", "template_name": None, "media_url": None,
+            "status": "sent", "wa_message_id": wamid, "wa_phone_number_id": recv_pnid,
+            "origin": "external", "simulated": False, "created_at": created_at,
+        }},
+        upsert=True,
+    )
+    doc = await mongo_db.brandsxai_wa_messages.find_one({"wa_message_id": wamid})
+    if doc and doc.get("origin") == "external":
+        WA_WEBHOOK_STATS["adopted_external_outbound"] += 1
+        logger.info(f"WA adopted externally-sent message {wamid} to {phone} -> conversation {conv_id}")
+        await _wa_touch_conversation(conv_id, WA_EXTERNAL_OUTBOUND_PLACEHOLDER, "outbound")
+    return doc
 
 
 @api_router.post("/whatsapp/webhook")
@@ -4002,6 +4131,10 @@ async def wa_webhook_receive(request: Request):
                     continue
                 doc = await mongo_db.brandsxai_wa_messages.find_one({"wa_message_id": wamid})
                 if not doc:
+                    # Never seen this id, so the message was sent outside the portal. Record it
+                    # instead of dropping it, otherwise the send is invisible in the inbox.
+                    doc = await _wa_adopt_external_outbound(status, recv_pnid, recv_waba, now)
+                if not doc:
                     continue
                 # Meta retries arrive OUT OF ORDER, so never downgrade read -> delivered -> sent
                 cur_rank = WA_STATUS_RANK.get(doc.get("status"), -1)
@@ -4020,6 +4153,13 @@ async def wa_webhook_receive(request: Request):
                 await mongo_db.brandsxai_wa_messages.update_one({"wa_message_id": wamid}, {"$set": set_fields})
                 WA_WEBHOOK_STATS["processed_statuses"] += 1
                 logger.info(f"WA status {new_status} for {wamid} (was {doc.get('status')})")
+                conv = await mongo_db.brandsxai_wa_conversations.find_one(
+                    {"id": doc.get("conversation_id")}, {"_id": 0, "brand_id": 1})
+                wa_publish({
+                    "type": "status", "conversation_id": doc.get("conversation_id"),
+                    "brand_id": (conv or {}).get("brand_id"), "wa_message_id": wamid,
+                    "status": new_status, "at": now.isoformat(),
+                })
     return {"ok": True}
 
 
