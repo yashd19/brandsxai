@@ -715,14 +715,27 @@ const NewConversationModal = ({ onClose, onCreated }) => {
   const [vars, setVars] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [tplLoading, setTplLoading] = useState(true);
+  const [tplSource, setTplSource] = useState('');
 
   useEffect(() => {
     (async () => {
-      const res = await fetch(`${API_URL}/api/whatsapp/templates`, { headers: authHeaders() });
-      if (res.ok) {
-        const d = await res.json();
-        setTemplates(d.templates || []);
-        if (d.templates?.length) { setTplName(d.templates[0].name); }
+      setTplLoading(true);
+      try {
+        // refresh=1 pulls newly approved templates from this WABA every time the picker opens
+        const res = await fetch(`${API_URL}/api/whatsapp/templates?refresh=1`, { headers: authHeaders() });
+        if (res.ok) {
+          const d = await res.json();
+          setTemplates(d.templates || []);
+          setTplSource(d.source || '');
+          if (d.templates?.length) { setTplName(d.templates[0].name); }
+        } else {
+          setErr('Could not load WhatsApp templates');
+        }
+      } catch (e) {
+        setErr('Could not load WhatsApp templates');
+      } finally {
+        setTplLoading(false);
       }
     })();
   }, []);
@@ -779,9 +792,19 @@ const NewConversationModal = ({ onClose, onCreated }) => {
           </div>
           <div className="wa-field">
             <label>Template message (first message must be an approved template)</label>
-            <select value={tplName} onChange={e => setTplName(e.target.value)}>
-              {templates.map(t => <option key={t.id} value={t.name}>{t.name} · {t.category}</option>)}
-            </select>
+            {tplLoading ? (
+              <div className="wa-modal-hint" style={{ padding: 0, margin: '6px 0 0' }}>Fetching approved templates from WhatsApp…</div>
+            ) : (
+              <select value={tplName} onChange={e => setTplName(e.target.value)} disabled={!templates.length}>
+                {!templates.length && <option value="">No approved templates on this account</option>}
+                {templates.map(t => <option key={t.id || `${t.name}-${t.language}`} value={t.name}>{t.name} · {t.language} · {t.category}</option>)}
+              </select>
+            )}
+            {!tplLoading && tplSource === 'meta' && (
+              <div className="wa-modal-hint" style={{ padding: 0, margin: '6px 0 0' }}>
+                {templates.length} approved template{templates.length === 1 ? '' : 's'} from the connected WhatsApp account
+              </div>
+            )}
           </div>
           {(tpl?.variables || []).length > 0 && (
             <div className="wa-vars">
@@ -801,7 +824,7 @@ const NewConversationModal = ({ onClose, onCreated }) => {
         </div>
         <div className="wa-modal-actions">
           <button className="wa-btn ghost" onClick={onClose}>Cancel</button>
-          <button className="wa-btn primary" onClick={submit} disabled={busy}>{busy ? 'Sending…' : 'Send & start chat'}</button>
+          <button className="wa-btn primary" onClick={submit} disabled={busy || tplLoading || !templates.length}>{busy ? 'Sending…' : 'Send & start chat'}</button>
         </div>
       </div>
     </div>

@@ -345,6 +345,19 @@ def init_mysql_tables(connection):
                         (claim_id, 'Code Extractor', 'FileSearch', '/dashboard/claim-processing/extractor', 1)
                     )
                     logger.info("Migrated: added Code Extractor page to existing Claim Processing feature")
+
+            cursor.execute("SELECT id FROM brandsxai_features WHERE name = 'WhatsApp AI'")
+            if not cursor.fetchone():
+                cursor.execute(
+                    "INSERT INTO brandsxai_features (name, icon, description) VALUES (%s, %s, %s)",
+                    ('WhatsApp AI', 'MessageCircle', 'AI-assisted WhatsApp Business conversations for lead conversion')
+                )
+                wa_id = cursor.lastrowid
+                cursor.execute(
+                    "INSERT INTO brandsxai_feature_pages (feature_id, name, icon, route, display_order) VALUES (%s, %s, %s, %s, %s)",
+                    (wa_id, 'Conversations', 'MessageCircle', '/dashboard/whatsapp-ai/conversations', 1)
+                )
+                logger.info("Created WhatsApp AI feature with pages")
             
             # Insert sample brands if not exists
             cursor.execute("SELECT id FROM brandsxai_brands WHERE name = 'Brand X'")
@@ -2382,6 +2395,104 @@ def wa_config():
         "verify_token": os.environ.get("WEBHOOK_VERIFY_TOKEN", "").strip(),
     }
 
+def wa_account_ids() -> dict:
+    """The live WhatsApp Business account this process is currently wired to."""
+    return {
+        "waba_id": (os.environ.get("WHATSAPP_WABA_ID", "") or "").strip() or None,
+        "wa_phone_number_id": wa_config()["phone_number_id"] or None,
+    }
+
+def wa_default_brand_id() -> int:
+    """Brand that owns brand-new / unmatched inbound WhatsApp conversations.
+
+    There is currently a single WhatsApp Business phone number shared by the whole
+    platform, so the webhook has no reliable way to know which brand a never-seen-before
+    phone number belongs to. Configurable via WA_DEFAULT_BRAND_ID so this doesn't stay
+    hardcoded to whichever brand happened to be seeded first.
+    """
+    try:
+        return int(os.environ.get("WA_DEFAULT_BRAND_ID", "1").strip() or "1")
+    except ValueError:
+        return 1
+
+async def _wa_validate_default_brand() -> None:
+    """Warn loudly if inbound WhatsApp threads would land on a brand nobody can see.
+
+    GET /whatsapp/conversations filters by the logged-in user's brand_id, so if
+    WA_DEFAULT_BRAND_ID points at a brand with no users, every inbound conversation is
+    written correctly and is still invisible in the portal - which looks exactly like
+    "WhatsApp is broken". Fail loudly instead of silently.
+    """
+    try:
+        bid = wa_default_brand_id()
+
+        # Users can live in MySQL (source of truth when reachable) or the MongoDB
+        # fallback, so both have to be checked - a brand can be "empty" in one and
+        # populated in the other.
+        mysql_brand_ids: set = set()
+        mysql_conn = try_mysql_connection()
+        if mysql_conn:
+            try:
+                with mysql_conn.cursor() as cursor:
+                    cursor.execute("SELECT DISTINCT brand_id FROM brandsxai_users WHERE brand_id IS NOT NULL")
+                    mysql_brand_ids = {row["brand_id"] for row in cursor.fetchall()}
+            except Exception as e:
+                logger.warning(f"WA default-brand validation: MySQL user check failed: {str(e)[:150]}")
+            finally:
+                mysql_conn.close()
+
+        if bid in mysql_brand_ids:
+            logger.info(f"WA default brand {bid} has MySQL portal user(s) - inbound threads will be visible")
+            return
+
+        mongo_users = await mongo_db.brandsxai_users.count_documents({"brand_id": bid})
+        if mongo_users:
+            logger.info(f"WA default brand {bid} has {mongo_users} MongoDB portal user(s) - inbound threads will be visible")
+            return
+
+        brands = await mongo_db.brandsxai_brands.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(50)
+        mongo_usable = sorted({u.get("brand_id") for u in
+                               await mongo_db.brandsxai_users.find({}, {"brand_id": 1}).to_list(200)
+                               if u.get("brand_id") is not None})
+        usable = sorted(mysql_brand_ids | set(mongo_usable))
+        logger.critical(
+            "WA_DEFAULT_BRAND_ID=%s has NO portal users (checked MySQL + MongoDB), so inbound WhatsApp "
+            "conversations will be INVISIBLE in the app. Existing brands: %s. Brands that have users: %s. "
+            "Set WA_DEFAULT_BRAND_ID to one of those and restart.",
+            bid, [(b.get("id"), b.get("name")) for b in brands], usable,
+        )
+    except Exception as e:
+        logger.warning(f"WA default-brand validation skipped: {str(e)[:150]}")
+
+
+async def _wa_backfill_account_tags() -> None:
+    """Stamp untagged threads with the live WABA / phone number id.
+
+    Threads created before we started recording the receiving account would otherwise
+    look orphaned after an account switch, or worse spawn a duplicate on the next inbound.
+    """
+    acc = wa_account_ids()
+    if not acc["waba_id"] and not acc["wa_phone_number_id"]:
+        return
+    try:
+        res = await mongo_db.brandsxai_wa_conversations.update_many(
+            {"$or": [
+                {"waba_id": {"$exists": False}},
+                {"waba_id": None},
+                {"waba_id": ""},
+                {"wa_phone_number_id": {"$exists": False}},
+                {"wa_phone_number_id": None},
+                {"wa_phone_number_id": ""},
+            ]},
+            {"$set": {k: v for k, v in acc.items() if v}},
+        )
+        if res.modified_count:
+            logger.info(f"WA account-tag backfill: stamped {res.modified_count} conversation(s) "
+                        f"with waba={acc['waba_id']} pnid={acc['wa_phone_number_id']}")
+    except Exception as e:
+        logger.warning(f"WA account-tag backfill skipped: {str(e)[:150]}")
+
+
 def wa_verify_tokens():
     """All accepted webhook verify tokens (supports both env var names)."""
     toks = [
@@ -2696,6 +2807,7 @@ async def _wa_auto_open_from_opportunity(opportunity_id: int, phone: str, brand_
             "last_message": rendered[:120], "last_message_at": now.isoformat(),
             "assigned_agent": agent_username, "intent": None, "temperature": "warm",
             "source": "voice_agent", "window_expires_at": None,
+            **wa_account_ids(),
             "created_at": now.isoformat(), "updated_at": now.isoformat()
         }
         await mongo_db.brandsxai_wa_conversations.insert_one(conv)
@@ -2801,6 +2913,49 @@ async def _wa_claude_json(system_message: str, user_text: str, session_id: str) 
         logger.error(f"WA Claude JSON parse error: {e} raw={text[:300]}")
         return {}
 
+def _wa_clean_line(text) -> str:
+    """One-line, quote-free, markdown-free text — the panel shows plays and replies as plain chips."""
+    line = re.sub(r"\s+", " ", str(text or "")).strip()
+    line = re.sub(r"^[-*\d.\s]+", "", line)
+    line = line.strip("`*_")
+    if len(line) > 1 and line[0] in "\"'“‘" and line[-1] in "\"'”’":
+        line = line[1:-1].strip()
+    return line
+
+def _wa_split_coach_output(raw_ideas, raw_suggestions) -> tuple:
+    """Keep the coach's two halves genuinely separate.
+
+    A play is strategy for the rep; a suggestion is text for the customer. The model
+    occasionally returns a play that is really just a rephrased version of one of the
+    messages, which makes the panel look duplicated — those get dropped.
+    """
+    from difflib import SequenceMatcher
+
+    def words(s):
+        return re.findall(r"[a-z0-9]+", s.lower())
+
+    suggestions, seen = [], set()
+    for s in raw_suggestions or []:
+        line = _wa_clean_line(s)
+        key = " ".join(words(line))
+        if line and key not in seen:
+            seen.add(key)
+            suggestions.append(line)
+    sugg_keys = [" ".join(words(s)) for s in suggestions]
+
+    ideas = []
+    for idea in raw_ideas or []:
+        line = _wa_clean_line(idea)
+        if not line:
+            continue
+        key = " ".join(words(line))
+        if any(SequenceMatcher(None, key, sk).ratio() > 0.62 for sk in sugg_keys):
+            continue
+        if any(SequenceMatcher(None, key, " ".join(words(i))).ratio() > 0.7 for i in ideas):
+            continue
+        ideas.append(line)
+    return ideas, suggestions
+
 def _wa_context_block(conv: dict) -> str:
     """Lead context + the authoritative event brief, injected into every WhatsApp AI prompt."""
     return (
@@ -2816,18 +2971,30 @@ def _wa_context_block(conv: dict) -> str:
 
 # -------- Template endpoints --------
 @api_router.get("/whatsapp/templates")
-async def wa_list_templates(current_user: dict = Depends(get_current_user)):
+async def wa_list_templates(refresh: bool = Query(False), current_user: dict = Depends(get_current_user)):
     if not current_user or current_user.get('type') == 'admin':
         raise HTTPException(status_code=403, detail="User access required")
     brand_id = current_user.get('brand_id')
     # When connected to a real WABA, only Meta-approved templates are sendable.
     # Prefer those so the UI never offers a template Meta will reject (error 132001).
     if wa_is_live():
+        # Opening the new-chat picker passes refresh=1 so newly approved templates
+        # appear immediately. Other callers still use the TTL-guarded cache.
+        if refresh:
+            try:
+                await _wa_sync_templates_from_meta(brand_id)
+            except Exception as e:
+                logger.warning(f"WA template refresh failed, serving cache: {str(e)[:200]}")
+        else:
+            await _wa_maybe_autosync_templates(brand_id)
+        waba = (os.environ.get("WHATSAPP_WABA_ID", "") or "").strip()
         meta_tpls = await mongo_db.brandsxai_wa_templates.find(
-            {"brand_id": brand_id, "source": "meta", "status": "APPROVED"}, {"_id": 0}
+            {"brand_id": brand_id, "source": "meta", "status": "APPROVED",
+             **({"waba_id": waba} if waba else {})}, {"_id": 0}
         ).to_list(200)
         if meta_tpls:
-            return {"templates": meta_tpls, "source": "meta", "live_mode": True}
+            return {"templates": meta_tpls, "source": "meta", "live_mode": True,
+                    "waba_id": waba, "synced": True}
     tpls = await mongo_db.brandsxai_wa_templates.find(
         {"$or": [{"brand_id": None}, {"brand_id": brand_id}]}, {"_id": 0}
     ).to_list(100)
@@ -2844,17 +3011,21 @@ async def wa_create_template(req: WATemplateCreate, current_user: dict = Depends
     tpl.pop("_id", None)
     return tpl
 
-@api_router.post("/whatsapp/templates/sync")
-async def wa_sync_templates(current_user: dict = Depends(get_current_user)):
+# Auto-sync bookkeeping: brand+WABA -> last attempt (monotonic seconds).
+WA_TEMPLATE_SYNC_TTL = int(os.environ.get("WA_TEMPLATE_SYNC_TTL", "300"))
+_WA_TPL_SYNC_STATE: dict = {}
+
+
+async def _wa_sync_templates_from_meta(brand_id) -> dict:
     """Pull the REAL approved templates from the connected Meta WABA into the portal.
 
     Meta rejects any template name/language that is not approved on the WABA
     (error 132001), so the portal must offer exactly what Meta has - including the
     exact language code (e.g. en_US, not en) and the correct number of {{n}} variables.
+
+    Also prunes rows Meta no longer approves, and rows left over from a different WABA,
+    so switching WhatsApp accounts cannot leave unsendable templates in the picker.
     """
-    if not current_user or current_user.get('type') == 'admin':
-        raise HTTPException(status_code=403, detail="User access required")
-    brand_id = current_user.get('brand_id')
     c = wa_config()
     waba = (os.environ.get("WHATSAPP_WABA_ID", "") or "").strip()
     if not wa_is_live() or not waba:
@@ -2924,9 +3095,59 @@ async def wa_sync_templates(current_user: dict = Depends(get_current_user)):
         )
         synced.append({"name": doc["name"], "language": doc["language"],
                        "variable_count": doc["variable_count"], "category": doc["category"]})
-    logger.info(f"WA template sync: {len(synced)} approved synced, {skipped} non-approved skipped")
-    return {"synced_count": len(synced), "skipped_not_approved": skipped,
+
+    # Prune: anything Meta no longer approves, plus leftovers from a previous WABA.
+    # Without this, switching WhatsApp accounts leaves templates in the picker that
+    # Meta will reject with error 132001.
+    keep = [(t["name"], t["language"]) for t in synced]
+    pruned = 0
+    if keep:
+        stale = await mongo_db.brandsxai_wa_templates.delete_many({
+            "brand_id": brand_id, "source": "meta",
+            "$nor": [{"name": n, "language": l} for n, l in keep],
+        })
+        pruned = stale.deleted_count
+    other_waba = await mongo_db.brandsxai_wa_templates.delete_many(
+        {"source": "meta", "waba_id": {"$exists": True, "$ne": waba}})
+    pruned += other_waba.deleted_count
+
+    logger.info(f"WA template sync: {len(synced)} approved synced, {skipped} non-approved skipped, "
+                f"{pruned} stale removed (brand {brand_id}, waba {waba})")
+    return {"synced_count": len(synced), "skipped_not_approved": skipped, "pruned": pruned,
             "waba_id": waba, "templates": synced}
+
+
+async def _wa_maybe_autosync_templates(brand_id) -> None:
+    """Refresh Meta templates when the cache is empty or older than the TTL.
+
+    Never raises: if Meta is unreachable the caller must still be able to serve
+    whatever is already cached.
+    """
+    waba = (os.environ.get("WHATSAPP_WABA_ID", "") or "").strip()
+    if not wa_is_live() or not waba:
+        return
+    import time as _time
+    now = _time.monotonic()
+    key = (brand_id, waba)
+    have = await mongo_db.brandsxai_wa_templates.count_documents(
+        {"brand_id": brand_id, "source": "meta", "status": "APPROVED", "waba_id": waba})
+    # Empty cache -> always sync, so the very first load already shows real templates.
+    if have and (now - _WA_TPL_SYNC_STATE.get(key, 0.0)) < WA_TEMPLATE_SYNC_TTL:
+        return
+    _WA_TPL_SYNC_STATE[key] = now
+    try:
+        res = await _wa_sync_templates_from_meta(brand_id)
+        logger.info(f"WA template auto-sync: {res.get('synced_count')} approved for brand {brand_id}")
+    except Exception as e:
+        logger.warning(f"WA template auto-sync failed, serving cached list: {str(e)[:200]}")
+
+
+@api_router.post("/whatsapp/templates/sync")
+async def wa_sync_templates(current_user: dict = Depends(get_current_user)):
+    """Manual force-refresh of the Meta template cache."""
+    if not current_user or current_user.get('type') == 'admin':
+        raise HTTPException(status_code=403, detail="User access required")
+    return await _wa_sync_templates_from_meta(current_user.get('brand_id'))
 
 # -------- Conversation endpoints --------
 @api_router.get("/whatsapp/conversations")
@@ -2934,8 +3155,20 @@ async def wa_list_conversations(current_user: dict = Depends(get_current_user)):
     if not current_user or current_user.get('type') == 'admin':
         raise HTTPException(status_code=403, detail="User access required")
     brand_id = current_user.get('brand_id')
-    convs = await mongo_db.brandsxai_wa_conversations.find({"brand_id": brand_id}, {"_id": 0}).sort("last_message_at", -1).to_list(200)
-    return {"conversations": convs, "live_mode": wa_is_live()}
+    acc = wa_account_ids()
+    query = {"brand_id": brand_id}
+    # Only show threads that belong to the WhatsApp account currently in .env.
+    # Untagged rows (created before we started stamping) stay visible so a just-received
+    # inbound message is not hidden after an account switch.
+    if acc["waba_id"] or acc["wa_phone_number_id"]:
+        ors = [{"waba_id": {"$in": [None, ""]}}, {"waba_id": {"$exists": False}}]
+        if acc["waba_id"]:
+            ors.append({"waba_id": acc["waba_id"]})
+        if acc["wa_phone_number_id"]:
+            ors.append({"wa_phone_number_id": acc["wa_phone_number_id"]})
+        query["$or"] = ors
+    convs = await mongo_db.brandsxai_wa_conversations.find(query, {"_id": 0}).sort("last_message_at", -1).to_list(200)
+    return {"conversations": convs, "live_mode": wa_is_live(), "account": acc}
 
 @api_router.post("/whatsapp/conversations")
 async def wa_create_conversation(req: WAConversationCreate, current_user: dict = Depends(get_current_user)):
@@ -2978,12 +3211,14 @@ async def wa_create_conversation(req: WAConversationCreate, current_user: dict =
         return {"conversation": conv, "message": msg, "reused": True}
 
     conv_id = str(uuid.uuid4())
+    acc = wa_account_ids()
     conv = {
         "id": conv_id, "brand_id": brand_id, "campaign_id": req.campaign_id, "campaign_name": req.campaign_name,
         "opportunity_id": req.opportunity_id, "lead_name": req.lead_name, "lead_phone": phone,
         "product_interest": req.product_interest, "stage": "Contacted", "status": "open",
         "unread_count": 0, "last_message": req.template_body_rendered[:120], "last_message_at": now.isoformat(),
         "assigned_agent": current_user.get('username'), "intent": None, "temperature": "warm",
+        "waba_id": acc["waba_id"], "wa_phone_number_id": acc["wa_phone_number_id"],
         "window_expires_at": None, "created_at": now.isoformat(), "updated_at": now.isoformat()
     }
     await mongo_db.brandsxai_wa_conversations.insert_one(conv)
@@ -3141,7 +3376,7 @@ async def wa_ingest_message(req: WAIngestMessage, request: Request):
     sender_type = req.sender_type or default_sender
 
     conv, created = await _wa_find_or_create_conv(
-        req.brand_id or 1, phone, req.lead_name, req.campaign_name, req.product_interest, source="voice_agent"
+        req.brand_id or wa_default_brand_id(), phone, req.lead_name, req.campaign_name, req.product_interest, source="voice_agent"
     )
     conv_id = conv["id"]
     now = datetime.now(timezone.utc)
@@ -3177,54 +3412,77 @@ async def wa_suggestions(conv_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Conversation not found")
     transcript = await _wa_build_transcript(conv_id)
     system = (
-        f"You are the Head of Growth for {WA_BRAND_NAME}, a premium jeweller in Jodhpur. You have run "
-        "jewellery exhibitions that pulled millions of footfalls and you convert WhatsApp conversations at "
-        "3-5x the industry average. A human sales rep is chatting with a lead about our Grand Chain & "
-        "Bangles Fest running 17-20 September.\n\n"
-        "You return TWO things.\n\n"
-        "1) creative_ideas: 2-3 STRATEGIC next moves (NOT messages) that create the highest chance THIS "
-        "specific lead walks into one of our three showrooms during those four days and buys.\n"
-        "Think in this order:\n"
-        "  a. Where is this lead in the pipeline? (Contacted -> Engaged -> Qualified -> Visit Confirmed -> "
-        "Reminded -> Visited -> Purchased / Nurture)\n"
-        "  b. What is their temperature (hot / warm / cold) and the single real reason they might not come?\n"
-        "  c. Which ONE lever best fits that reason:\n"
-        "     - Value lever: flat 50% off making on gold chains and bangles, making from 2.99%, lowest making "
-        "they have ever offered in Jodhpur\n"
-        "     - Occasion lever: wedding, anniversary, birthday, festival gifting, gift for mother/wife\n"
-        "     - Collection lever: biggest ever chain and bangles collection, Dubai / Italian / Singapore designs\n"
-        "     - Convenience lever: walk in any of the four days 11 AM-9 PM, no booking needed, whichever of the "
-        "three showrooms is nearest (Sojti Gate, C Road, Satsang Bhawan)\n"
-        "     - Social lever: bring family along, send a 3-design shortlist to share with spouse/mother\n"
-        "     - Reassurance lever: see and try the pieces in person at an established local showroom before deciding\n"
-        "     - Urgency lever (true, so usable): four days only, 17-20 September; before the 17th making is full price\n"
-        "  d. Prefer moves the rep can execute in the next 5 minutes on WhatsApp (send 3 design photos, confirm "
-        "which day and which showroom they will come to, ask chain vs bangles, ask their gramage or budget range, "
-        "share timings and location).\n\n"
-        "2) suggestions: exactly 3 ready-to-send REPLY messages the rep can send right now - short (1-2 sentences), "
-        "warm, natural like a real person on WhatsApp, no markdown, minimal emojis, each taking a different angle "
-        "(answer their question, handle an objection, invite them to walk in during the fest).\n\n"
-        "RULES:\n"
-        "- Each idea is a crisp, action-oriented phrase, max ~10 words, tailored to THIS conversation - no generic advice.\n"
-        "- No two ideas may use the same lever.\n"
-        "- Never invent an offer that is not in the EVENT BRIEF.\n"
-        "- The offer is ONE deal: flat 50% off making IS the 'making from 2.99%'. Never stack them as two discounts.\n"
-        "- Never imply the gold rate is discounted - only making charges are cut.\n"
-        "- The fest rate covers gold chains and bangles ONLY.\n"
-        "- There are no slots or appointments to book. The commitment to ask for is WHICH DAY and WHICH SHOWROOM "
-        "they will walk into.\n"
-        "- If the lead is cold, ideas must LOWER commitment (e.g. 'send 3 bangle designs, ask which she likes') "
-        "rather than push a visit.\n"
-        "- If the lead is hot, ideas must lock the visit day and protect the sale (confirm day and showroom, ask "
-        "which designs to have ready to show).\n\n"
+        f"You are the sharpest sales coach at {WA_BRAND_NAME}, a premium jeweller in Jodhpur. You sit beside "
+        "ONE human rep who is on WhatsApp with ONE lead about the Grand Chain & Bangles Fest (17-20 September). "
+        "The rep reads you in a narrow side panel between customer replies, so every word must earn its place.\n"
+        "Write EVERYTHING in English.\n\n"
+        "You produce TWO things that must never blur into each other:\n"
+        "  creative_ideas = coaching for the REP's eyes. Strategy. Never words the customer sees.\n"
+        "  suggestions    = the exact words the CUSTOMER sees. Never strategy talk.\n\n"
+        "===== 1) creative_ideas: 2-3 plays, for the rep only =====\n"
+        "A play is an angle this rep would not have thought of by themselves. Build each one this way:\n"
+        "  a. Read the ONE real signal in this chat: the word they repeated, who they are buying for, the "
+        "occasion behind it, what they asked twice, what they pointedly did NOT answer, how fast they reply, "
+        "whether they talk price, weight or design first.\n"
+        "  b. Name the single honest reason this lead would not walk in during the four days.\n"
+        "  c. Pick the ONE lever that removes that reason:\n"
+        "     value (flat 50% off making, from 2.99% - the lowest making Jodhpur has seen) / occasion (wedding, "
+        "anniversary, birthday, festival, gift for mother or wife) / collection (biggest ever chain and bangles "
+        "range, Dubai, Italian, Singapore designs) / convenience (any of the four days 11 AM-9 PM, no booking, "
+        "nearest of Sojti Gate, C Road, Satsang Bhawan) / social (bring family, send a 3-design shortlist to "
+        "show her mother or husband) / reassurance (try the piece on in person before deciding) / urgency "
+        "(four days only; before the 17th making is full price).\n"
+        "  d. The move must be something the rep can do in the next five minutes inside WhatsApp.\n"
+        "FORM: each idea is ONE line, 12 words or fewer, imperative, addressed to the rep, and it must name "
+        "the specific detail it hangs on - e.g. 'Shortlist 3 bangles for her mother's anniversary', 'She "
+        "asked weight twice - quote per gram', 'Offer C Road, she works near Sojti Gate'.\n"
+        "Count the words. If a play runs past 12, cut the adjectives and the explanation - the rep only needs "
+        "the signal and the move.\n"
+        "NEVER write an idea as a sentence the rep could paste and send, and never put quoted message text in "
+        "an idea. No two ideas may use the same lever or the same signal.\n\n"
+        "===== 2) suggestions: exactly 3 messages, ready to send =====\n"
+        "These are the real words going to the customer. HARD LIMIT: 18 words per message, and aim for 12. "
+        "One line, one thought - if it needs a comma splice or a second clause, cut it.\n"
+        "Type like a person on a phone: contractions, plain words, no markdown, no bullets, no 'Dear' or "
+        "'Greetings', at most one emoji across all three, no repeating the customer's name in every message.\n"
+        "Three different routes: (a) answer or acknowledge exactly what they said last, (b) dissolve the "
+        "hesitation you named above, (c) ask for the next small commitment - which day, which showroom, chain "
+        "or bangles, who it is for.\n"
+        "At least two must end with a question they can answer in three words.\n"
+        "Never recite offer copy. Do not write lines like 'the lowest making ever offered in Jodhpur' or "
+        "'biggest ever collection' - that is brochure language and the customer feels it. If the offer needs "
+        "saying, say it once, plainly, as it affects THEM ('making is half price till the 20th').\n"
+        "A message must never restate an idea's wording or read like a broadcast.\n\n"
+        "===== THE BAR =====\n"
+        "Test every single line before you answer: could it be pasted into a different lead's chat without "
+        "changing one word? If yes it is generic - delete it and write one that only makes sense for THIS "
+        "person. Use their words, their occasion, their budget hints, their timing.\n"
+        "Hold both heads at once. As the customer: 'why would I leave my house and walk into a jewellery "
+        "showroom this week?' As the rep: 'what moves this lead one stage forward today?' (Contacted -> "
+        "Engaged -> Qualified -> Visit Confirmed -> Reminded -> Visited -> Purchased.)\n"
+        "Cold lead: lower the ask - a design photo, one easy question - do not push the visit. Warm lead: get "
+        "a preference on record (chain or bangles, gramage, who it is for). Hot lead: lock which day and which "
+        "showroom, and ask what to keep ready to show them.\n"
+        "If only the opening template has been sent, work from the campaign and product interest and open the "
+        "conversation - never pretend the customer said something they did not.\n\n"
+        "===== FACTS =====\n"
+        "Never state an offer that is not in the EVENT BRIEF.\n"
+        "Flat 50% off making IS 'making from 2.99%' - one deal, never two stacked discounts.\n"
+        "The gold rate is never discounted; only making charges are cut. HARD RULE: the word 'gold' must never "
+        "appear in the same sentence as a saving, a discount, a budget or a price - no 'cheaper gold', no "
+        "'better gold rate', no 'your budget stretches further on the gold', no 'more grams for your money'. "
+        "The saving belongs to the making charge and nothing else.\n"
+        "Fest making rates cover gold chains and bangles ONLY.\n"
+        "There is no slot or appointment - the commitment to ask for is WHICH DAY and WHICH SHOWROOM.\n\n"
         "Also classify the lead's buying intent as one of: hot, warm, cold.\n"
         "Respond ONLY with strict JSON: {\"creative_ideas\":[\"...\",\"...\"],\"suggestions\":[\"...\",\"...\",\"...\"],"
         "\"intent\":\"short phrase\",\"temperature\":\"hot|warm|cold\"}"
     )
-    user_text = f"CAMPAIGN & LEAD CONTEXT:\n{_wa_context_block(conv)}\n\nCONVERSATION SO FAR:\n{transcript or '(only the first template message has been sent)'}\n\nGive the creative ideas and the 3 best next reply messages now."
+    user_text = f"CAMPAIGN & LEAD CONTEXT:\n{_wa_context_block(conv)}\n\nCONVERSATION SO FAR:\n{transcript or '(only the first template message has been sent)'}\n\nCoach the rep now: 2-3 plays for their eyes, then the 3 best messages to send."
     result = await _wa_claude_json(system, user_text, f"wa-sugg-{conv_id}")
-    suggestions = result.get("suggestions") or []
-    creative_ideas = result.get("creative_ideas") or []
+    creative_ideas, suggestions = _wa_split_coach_output(
+        result.get("creative_ideas"), result.get("suggestions")
+    )
     temperature = result.get("temperature")
     intent = result.get("intent")
     # persist intent/temperature onto conversation
@@ -3250,23 +3508,28 @@ async def wa_draft_from_idea(conv_id: str, req: WADraftFromIdea, current_user: d
         raise HTTPException(status_code=404, detail="Conversation not found")
     transcript = await _wa_build_transcript(conv_id)
     system = (
-        f"You are a WhatsApp sales rep for {WA_BRAND_NAME}, a premium jeweller in Jodhpur. Turn the given "
-        "STRATEGIC IDEA into ONE ready-to-send WhatsApp message to the customer: short (1-2 sentences), warm, "
-        "natural, no markdown, minimal emojis, ending with a gentle nudge toward walking into one of our three "
-        "showrooms during the Grand Chain & Bangles Fest (17-20 September, 11 AM-9 PM) when it fits.\n"
+        f"You are a WhatsApp sales rep for {WA_BRAND_NAME}, a premium jeweller in Jodhpur. The PLAY below is "
+        "private coaching written to you. Execute it as ONE message to the customer, in English.\n"
+        "ONE line, max 22 words, ideally under 15. Type like a person on a phone: contractions, plain words, "
+        "no markdown, no 'Dear' or 'Greetings', at most one emoji, and end with a question they can answer in "
+        "three words whenever it fits.\n"
+        "Carry out the play - never describe it, never quote its wording, and never mention coaching, "
+        "strategy or AI. Hang the message on the specific detail the play points at (their occasion, the "
+        "person they are buying for, what they asked about).\n"
         "Stick strictly to the EVENT BRIEF in the context - never invent an offer. The deal is ONE thing: flat "
         "50% off making charges on gold chains and bangles, which is what 'making from 2.99%' means - never "
         "present them as two separate discounts. Never suggest the gold rate is discounted. Never ask them to "
-        "book a slot or appointment; they can simply walk in.\n"
+        "book a slot or appointment; the ask is which day and which showroom they will walk into (17-20 "
+        "September, 11 AM-9 PM).\n"
         "Respond ONLY with strict JSON: {\"message\":\"...\"}"
     )
     user_text = (
         f"CAMPAIGN & LEAD CONTEXT:\n{_wa_context_block(conv)}\n\n"
         f"CONVERSATION SO FAR:\n{transcript or '(only the first template message has been sent)'}\n\n"
-        f"STRATEGIC IDEA TO EXECUTE: {req.idea}\n\nWrite the message now."
+        f"PLAY TO EXECUTE: {req.idea}\n\nWrite the message now."
     )
     result = await _wa_claude_json(system, user_text, f"wa-idea-{conv_id}")
-    return {"message": result.get("message", "")}
+    return {"message": _wa_clean_line(result.get("message", ""))}
 
 @api_router.get("/whatsapp/conversations/{conv_id}/summary")
 async def wa_summary(conv_id: str, current_user: dict = Depends(get_current_user)):
@@ -3277,16 +3540,20 @@ async def wa_summary(conv_id: str, current_user: dict = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Conversation not found")
     transcript = await _wa_build_transcript(conv_id, limit=40)
     system = (
-        f"You analyze a WhatsApp sales conversation for {WA_BRAND_NAME}, a premium jeweller running a Grand "
-        "Chain & Bangles Fest from 17-20 September. Judge how close this lead is to walking into a showroom "
-        "during the fest and buying. The next_step must be one concrete action the rep can take on WhatsApp "
-        "now, consistent with the EVENT BRIEF - no invented offers, and no slot/appointment booking (the fest "
-        "is walk-in).\n"
+        f"You read a WhatsApp sales conversation for {WA_BRAND_NAME}, a premium jeweller running a Grand "
+        "Chain & Bangles Fest from 17-20 September, and brief the rep in English. Judge how close this lead "
+        "is to walking into a showroom during the fest and buying.\n"
+        "The summary says what this lead actually wants, who it is for, and the one thing holding them back - "
+        "not a replay of the messages. The next_step is ONE concrete action the rep can take on WhatsApp now, "
+        "max 15 words, specific to this lead, consistent with the EVENT BRIEF - no invented offers, and no "
+        "slot or appointment booking (the fest is walk-in; the ask is which day and which showroom).\n"
         "Return ONLY strict JSON: {\"summary\":\"2-3 sentence summary\",\"next_step\":\"one recommended next action\",\"temperature\":\"hot|warm|cold\"}"
     )
     user_text = f"CONTEXT:\n{_wa_context_block(conv)}\n\nCONVERSATION:\n{transcript}"
     result = await _wa_claude_json(system, user_text, f"wa-sum-{conv_id}")
-    return {"summary": result.get("summary", ""), "next_step": result.get("next_step", ""), "temperature": result.get("temperature")}
+    return {"summary": _wa_clean_line(result.get("summary", "")),
+            "next_step": _wa_clean_line(result.get("next_step", "")),
+            "temperature": result.get("temperature")}
 
 # -------- Appointment (showroom visit) --------
 @api_router.post("/whatsapp/conversations/{conv_id}/appointment")
@@ -3635,6 +3902,11 @@ async def wa_webhook_receive(request: Request):
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value", {})
+            # WHICH of our business numbers received this. A thread is scoped to
+            # (customer number + our receiving number), so switching WhatsApp accounts
+            # starts a clean thread instead of appending to the previous account's history.
+            recv_pnid = str(((value.get("metadata") or {}).get("phone_number_id")) or "") or None
+            recv_waba = str(entry.get("id") or "") or None
             # Map wa_id -> WhatsApp profile name so new threads get a real name, not a number
             profile_names = {}
             for ct in value.get("contacts", []) or []:
@@ -3646,21 +3918,39 @@ async def wa_webhook_receive(request: Request):
                 phone = _norm_phone(wa_id)
                 mtype = m.get("type", "text")
                 display_name = profile_names.get(phone) or phone
-                conv = await mongo_db.brandsxai_wa_conversations.find_one({"lead_phone": phone})
+                conv = await mongo_db.brandsxai_wa_conversations.find_one(
+                    {"lead_phone": phone, "wa_phone_number_id": recv_pnid})
+                if not conv and recv_pnid:
+                    # Same customer, thread created before we stamped the receiving number
+                    conv = await mongo_db.brandsxai_wa_conversations.find_one({
+                        "lead_phone": phone,
+                        "$or": [
+                            {"wa_phone_number_id": {"$in": [None, ""]}},
+                            {"wa_phone_number_id": {"$exists": False}},
+                        ],
+                    })
                 if not conv:
                     # create a bare conversation for unknown inbound
                     conv_id = str(uuid.uuid4())
-                    conv = {"id": conv_id, "brand_id": 1, "lead_name": display_name, "lead_phone": phone,
+                    conv = {"id": conv_id, "brand_id": wa_default_brand_id(), "lead_name": display_name, "lead_phone": phone,
+                            "wa_phone_number_id": recv_pnid, "waba_id": recv_waba,
                             "stage": "Contacted", "status": "open", "unread_count": 0,
                             "temperature": "warm", "source": "inbound_webhook",
                             "created_at": now.isoformat(), "updated_at": now.isoformat()}
                     await mongo_db.brandsxai_wa_conversations.insert_one(conv)
                 else:
                     conv_id = conv["id"]
+                    stamp = {}
+                    if recv_pnid and not conv.get("wa_phone_number_id"):
+                        stamp["wa_phone_number_id"] = recv_pnid
+                    if recv_waba and not conv.get("waba_id"):
+                        stamp["waba_id"] = recv_waba
                     # Upgrade a placeholder name (bare phone number) to the real profile name
                     if display_name != phone and (conv.get("lead_name") or "") in ("", phone):
+                        stamp["lead_name"] = display_name
+                    if stamp:
                         await mongo_db.brandsxai_wa_conversations.update_one(
-                            {"id": conv_id}, {"$set": {"lead_name": display_name}})
+                            {"id": conv_id}, {"$set": stamp})
                 existing = await mongo_db.brandsxai_wa_messages.find_one({"wa_message_id": m.get("id")})
                 if existing:
                     continue
@@ -3698,6 +3988,7 @@ async def wa_webhook_receive(request: Request):
                     "id": str(uuid.uuid4()), "conversation_id": conv_id, "direction": "inbound",
                     "sender_type": "customer", "content": content, "msg_type": mtype,
                     "media_url": media_url, "status": "delivered", "wa_message_id": m.get("id"),
+                    "wa_phone_number_id": recv_pnid,
                     "simulated": False, "created_at": now.isoformat()
                 })
                 WA_WEBHOOK_STATS["processed_messages"] += 1
@@ -3758,3 +4049,5 @@ async def startup_event():
         mysql_conn.close()
     await init_mongodb_collections()
     logger.info("Database initialization complete")
+    await _wa_validate_default_brand()
+    await _wa_backfill_account_tags()
