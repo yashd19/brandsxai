@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ReturnDocument
+from pymongo.errors import OperationFailure
 import os
 import re
 import asyncio
@@ -507,6 +508,20 @@ async def init_mongodb_collections():
         await mongo_db.brandsxai_wa_messages.create_index("wa_message_id")
         await mongo_db.brandsxai_wa_appointments.create_index([("conversation_id", 1), ("created_at", -1)])
         await mongo_db.brandsxai_wa_media.create_index("media_id", unique=True)
+
+        # Raw webhook archive: lookups are always "the payload behind this message id / number"
+        await mongo_db[WA_RAW_COLLECTION].create_index("wamids")
+        await mongo_db[WA_RAW_COLLECTION].create_index("phones")
+        await mongo_db[WA_RAW_COLLECTION].create_index([("received_at", -1)])
+        # Mongo rejects a create_index that differs only in expireAfterSeconds, so an existing
+        # TTL index has to be modified in place when WA_RAW_RETENTION_DAYS changes.
+        ttl_seconds = wa_raw_retention_days() * 86400
+        try:
+            await mongo_db[WA_RAW_COLLECTION].create_index(
+                "received_at", name="wa_raw_ttl", expireAfterSeconds=ttl_seconds)
+        except OperationFailure:
+            await mongo_db.command({"collMod": WA_RAW_COLLECTION,
+                                    "index": {"name": "wa_raw_ttl", "expireAfterSeconds": ttl_seconds}})
 
         # Create claim processing indexes
         await mongo_db.brandsxai_claim_sessions.create_index("user_id")
@@ -3895,6 +3910,60 @@ WA_WEBHOOK_STATS = {
 
 WA_EXTERNAL_OUTBOUND_PLACEHOLDER = "[sent outside the portal — WhatsApp does not report the text]"
 
+# Raw webhook bodies are kept for a short window so that a payload the parser does not fully
+# understand yet (a shared contact card, a Flow reply, an ad referral) can still be recovered
+# afterwards. Without this, anything written as a "[type]" placeholder is lost the instant it
+# lands, because the Cloud API has no endpoint to re-read a past message.
+WA_RAW_COLLECTION = "brandsxai_wa_webhook_raw"
+
+
+def wa_raw_retention_days() -> int:
+    try:
+        return max(1, int(os.environ.get("WA_RAW_RETENTION_DAYS", "14").strip() or "14"))
+    except ValueError:
+        return 14
+
+
+async def _wa_archive_raw_webhook(raw: bytes, signature: str, sig_verified, now) -> None:
+    """Store one webhook body verbatim. Best-effort: never raises, so ingestion cannot break.
+
+    The body is kept exactly as received rather than re-serialized, so the stored signature
+    stays re-verifiable, and a flat summary is indexed next to it so the payload behind a
+    given message id or phone number can be found without scanning every document.
+    """
+    try:
+        body = raw.decode("utf-8", "replace")
+        doc = {
+            "received_at": now,          # real BSON date, because the TTL index expires on it
+            "signature": signature or None,
+            "signature_verified": sig_verified,
+            "byte_len": len(raw),
+            "raw": body,
+        }
+        wamids, phones, msg_types, fields = [], [], [], []
+        try:
+            payload = json.loads(body)
+            for entry in payload.get("entry") or []:
+                for change in entry.get("changes") or []:
+                    fields.append(change.get("field"))
+                    value = change.get("value") or {}
+                    for m in value.get("messages") or []:
+                        wamids.append(m.get("id"))
+                        phones.append(_norm_phone(m.get("from")))
+                        msg_types.append(m.get("type"))
+                    for s in value.get("statuses") or []:
+                        wamids.append(s.get("id"))
+                        phones.append(_norm_phone(s.get("recipient_id")))
+        except Exception:
+            doc["unparsed"] = True
+        doc["wamids"] = sorted({w for w in wamids if w})
+        doc["phones"] = sorted({p for p in phones if p})
+        doc["msg_types"] = sorted({t for t in msg_types if t})
+        doc["fields"] = sorted({f for f in fields if f})
+        await mongo_db[WA_RAW_COLLECTION].insert_one(doc)
+    except Exception as e:
+        logger.error(f"WA raw webhook archive failed: {e}")
+
 
 async def _wa_adopt_external_outbound(status: dict, recv_pnid, recv_waba, now):
     """Create a local row for an outbound message that was sent outside this portal.
@@ -3979,6 +4048,7 @@ async def wa_webhook_receive(request: Request):
     #              inbound message and delivery receipt.
     mode = (os.environ.get("WA_REQUIRE_SIGNATURE", "auto").strip().lower() or "auto")
     secrets = wa_app_secrets()
+    sig_verified = None                      # None = no app secret configured, nothing to verify
     if secrets:
         supplied = request.headers.get("X-Hub-Signature-256", "")
         matched = False
@@ -3990,6 +4060,7 @@ async def wa_webhook_receive(request: Request):
             if supplied and _hmac.compare_digest(supplied, expected):
                 matched = True
                 break
+        sig_verified = matched
         if matched:
             WA_WEBHOOK_STATS["signature_ok_count"] += 1
         else:
@@ -4024,6 +4095,8 @@ async def wa_webhook_receive(request: Request):
                 "WA webhook ACCEPTED WITHOUT SIGNATURE VERIFICATION because META_APP_SECRET is wrong. "
                 "FIX IT: %s", secret_state.get("detail"),
             )
+    # Archive only what survived the signature gate, so a rejected forgery cannot write to us.
+    await _wa_archive_raw_webhook(raw, request.headers.get("X-Hub-Signature-256", ""), sig_verified, now)
     try:
         payload = json.loads(raw.decode("utf-8"))
     except Exception:
